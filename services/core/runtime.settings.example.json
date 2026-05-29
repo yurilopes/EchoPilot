@@ -1,0 +1,9 @@
+{
+  "language": "en",
+  "model_size": "base",
+  "chunk_seconds": 2.0,
+  "analysis_interval_seconds": 0,
+  "base_url": "https://api.deepseek.com",
+  "llm_model": "deepseek-chat",
+  "prompt": "Summarize key points and action items from this transcript."
+}

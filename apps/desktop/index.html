@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Realtime System Transcriber Desktop</title>
+    <style>
+      body { margin: 0; font-family: Segoe UI, sans-serif; color: #123524; background: #ede6d8; }
+      .bar { display: flex; gap: 8px; padding: 8px; background: #123524; color: #ede6d8; }
+      button { border: 1px solid #b59b6a; background: #ede6d8; border-radius: 999px; padding: 6px 10px; cursor: pointer; }
+      iframe { border: 0; width: 100vw; height: calc(100vh - 44px); }
+    </style>
+  </head>
+  <body>
+    <div class="bar">
+      <button id="aot">Toggle Always On Top</button>
+      <button id="pip">Toggle PiP</button>
+      <span id="state">Backend: booting...</span>
+    </div>
+    <iframe src="http://127.0.0.1:5173"></iframe>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>
