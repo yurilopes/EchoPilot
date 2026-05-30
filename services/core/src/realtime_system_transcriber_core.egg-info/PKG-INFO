@@ -1,5 +1,5 @@
-Metadata-Version: 2.4
-Name: realtime-system-transcriber-core
+﻿Metadata-Version: 2.4
+Name: echopilot-core
 Version: 0.1.0
 Summary: Local-first realtime system audio transcriber with ASR and LLM analysis
 Requires-Python: >=3.11

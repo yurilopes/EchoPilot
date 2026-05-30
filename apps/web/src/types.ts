@@ -1,4 +1,7 @@
 export type TabKey = "live" | "ai" | "models" | "settings";
+export type SessionUiState = "idle" | "starting" | "running" | "stopping" | "error";
+export type AiReadinessState = "ready" | "missing_key" | "invalid_config" | "disabled";
+export type TranscriptFollowState = "following" | "paused";
 
 export type RuntimeStatus = {
   running: boolean;

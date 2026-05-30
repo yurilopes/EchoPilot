@@ -1,4 +1,4 @@
-param()
+﻿param()
 $ErrorActionPreference = "Stop"
 
 $root = Resolve-Path "$PSScriptRoot\.."
@@ -16,9 +16,9 @@ npm run build
 Pop-Location
 
 Write-Host "[build] Creating portable package placeholder"
-$portableDir = Join-Path $artifacts "RealtimeSystemTranscriber-Portable"
+$portableDir = Join-Path $artifacts "EchoPilot-Portable"
 New-Item -ItemType Directory -Force -Path $portableDir | Out-Null
 Copy-Item "$root\README.md" "$portableDir\README.md" -Force
-Compress-Archive -Path "$portableDir\*" -DestinationPath "$artifacts\RealtimeSystemTranscriber-Portable.zip" -Force
+Compress-Archive -Path "$portableDir\*" -DestinationPath "$artifacts\EchoPilot-Portable.zip" -Force
 
 Write-Host "[build] Build completed. Check artifacts folder."

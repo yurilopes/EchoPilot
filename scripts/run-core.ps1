@@ -20,5 +20,5 @@ foreach ($cudaBin in $cudaCandidates) {
   }
 }
 
-.\.venv\Scripts\python -m uvicorn realtime_system_transcriber.main:app --host 127.0.0.1 --port 8765 --reload
+.\.venv\Scripts\python -m uvicorn realtime_system_transcriber.main:app --host 127.0.0.1 --port 8765 --reload --reload-dir src --reload-dir tests
 Pop-Location

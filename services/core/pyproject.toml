@@ -1,5 +1,5 @@
-[project]
-name = "realtime-system-transcriber-core"
+﻿[project]
+name = "echopilot-core"
 version = "0.1.0"
 description = "Local-first realtime system audio transcriber with ASR and LLM analysis"
 requires-python = ">=3.11"

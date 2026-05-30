@@ -1,8 +1,8 @@
-# Distribution Guide (Windows)
+﻿# Distribution Guide (Windows)
 
 ## Output artifacts
-- `artifacts/RealtimeSystemTranscriber-Setup.msi`
-- `artifacts/RealtimeSystemTranscriber-Portable.zip`
+- `artifacts/EchoPilot-Setup.msi`
+- `artifacts/EchoPilot-Portable.zip`
 
 ## Preconditions on target PC
 - Windows 11 recommended.
@@ -11,7 +11,7 @@
 
 ## Install flow
 1. Download MSI and run installer.
-2. Launch `RealtimeSystemTranscriber` from Start Menu.
+2. Launch `EchoPilot` from Start Menu.
 3. Open settings, configure API key and model endpoint.
 4. Press Start and verify live transcript updates.
 

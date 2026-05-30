@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from pathlib import Path
 from typing import Literal
@@ -24,7 +24,7 @@ class AppSettings(BaseSettings):
     port: int = 8765
     log_level: str = "INFO"
     settings_path: Path = Path("runtime/settings.json")
-    secret_service_name: str = "realtime-system-transcriber"
+    secret_service_name: str = "echopilot"
     secret_username: str = "llm_api_key"
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="RST_")

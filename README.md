@@ -1,6 +1,10 @@
-# Realtime System Transcriber
+# EchoPilot
 
-Local-first Windows product for real-time system audio transcription (WASAPI loopback), LLM analysis via OpenAI-compatible APIs, and dual UI delivery (web + desktop with Always On Top and PiP).
+EchoPilot is a local-first Windows copilot for meetings.
+
+The name is a play on **echo + copilot**: it captures what is being said, transcribes it in real time, and uses AI to help the user expand reasoning during conversations, especially when it is hard to clearly understand speech, remember details, or reference earlier points.
+
+The product combines real-time system audio transcription (WASAPI loopback), OpenAI-compatible LLM analysis, and dual UI delivery (web + desktop with Always On Top and PiP).
 
 ## Stack
 - Core service: Python + FastAPI + faster-whisper (CTranslate2)
@@ -14,7 +18,7 @@ Local-first Windows product for real-time system audio transcription (WASAPI loo
 - ASR backend with CUDA/CPU fallback status.
 - WebSocket streaming for transcript/status events.
 - LLM analysis endpoint using base URL + model + prompt.
-- Web UI with runtime controls and observability panel.
+- Web UI focused on live transcription, AI analysis, and model/runtime controls.
 - Desktop wrapper with Always On Top and PiP toggles.
 - Windows scripts for setup, run, and build.
 

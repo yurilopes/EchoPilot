@@ -1,4 +1,4 @@
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+﻿#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
@@ -25,10 +25,10 @@ fn toggle_pip_mode(window: tauri::Window, state: tauri::State<BackendState>) -> 
     if *pip {
         window.set_size(Size::Logical(LogicalSize::new(520.0, 280.0))).map_err(|e| e.to_string())?;
         window.set_always_on_top(true).map_err(|e| e.to_string())?;
-        window.set_title("Realtime System Transcriber PiP").map_err(|e| e.to_string())?;
+        window.set_title("EchoPilot PiP").map_err(|e| e.to_string())?;
     } else {
         window.set_size(Size::Logical(LogicalSize::new(1280.0, 820.0))).map_err(|e| e.to_string())?;
-        window.set_title("Realtime System Transcriber").map_err(|e| e.to_string())?;
+        window.set_title("EchoPilot").map_err(|e| e.to_string())?;
     }
 
     Ok(*pip)

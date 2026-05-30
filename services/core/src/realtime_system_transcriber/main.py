@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
@@ -64,7 +64,7 @@ async def lifespan(_: FastAPI):
     await runtime_controller.stop()
 
 
-app = FastAPI(title="Realtime System Transcriber Core", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="EchoPilot Core", version="0.1.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],

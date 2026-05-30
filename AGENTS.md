@@ -1,7 +1,7 @@
-# AGENTS.md
+﻿# AGENTS.md
 
 ## Project
-- Name: `realtime-system-transcriber`
+- Name: `EchoPilot`
 - Scope: local-first Windows app for system audio transcription and LLM analysis.
 
 ## Agent Rules

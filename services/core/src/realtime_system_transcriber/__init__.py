@@ -1,1 +1,1 @@
-"""Realtime System Transcriber core package."""
+﻿"""EchoPilot core package."""

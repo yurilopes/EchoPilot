@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "RealtimeSystemTranscriber",
+  "productName": "EchoPilot",
   "version": "0.1.0",
-  "identifier": "com.echopilot.realtimesystemtranscriber",
+  "identifier": "com.echopilot.EchoPilot",
   "build": {
     "frontendDist": "../desktop",
     "devUrl": "http://127.0.0.1:5173"
@@ -10,7 +10,7 @@
   "app": {
     "windows": [
       {
-        "title": "Realtime System Transcriber",
+        "title": "EchoPilot",
         "width": 1360,
         "height": 900,
         "resizable": true
