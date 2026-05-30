@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import queue
+import threading
 from dataclasses import dataclass
 
 import numpy as np
-import sounddevice as sd
 from loguru import logger
+
+try:
+    import soundcard as sc
+except Exception:  # pragma: no cover
+    sc = None  # type: ignore[assignment]
 
 
 @dataclass(slots=True)
@@ -20,53 +25,61 @@ class WasapiLoopbackCapture:
         self.channels = channels
         self.block_seconds = block_seconds
         self.block_size = int(sample_rate * block_seconds)
-        self._stream: sd.InputStream | None = None
         self._queue: queue.Queue[np.ndarray] = queue.Queue(maxsize=20)
         self._device_name = "unknown"
+        self._thread: threading.Thread | None = None
+        self._stop_event = threading.Event()
 
     @staticmethod
     def list_devices() -> list[CaptureDevice]:
-        devices = sd.query_devices()
-        result: list[CaptureDevice] = []
-        for index, device in enumerate(devices):
-            hostapi = sd.query_hostapis(device["hostapi"])
-            if "Windows WASAPI" in hostapi["name"] and device["max_input_channels"] > 0:
-                result.append(CaptureDevice(name=device["name"], index=index))
-        return result
+        if sc is None:
+            return []
+        speakers = sc.all_speakers()
+        return [CaptureDevice(name=s.name, index=i) for i, s in enumerate(speakers)]
 
     def start(self, device_index: int | None = None) -> None:
-        extra = sd.WasapiSettings(loopback=True)
+        if sc is None:
+            raise RuntimeError("soundcard is not installed")
 
-        def _callback(indata: np.ndarray, frames: int, time, status) -> None:  # type: ignore[no-untyped-def]
-            if status:
-                logger.warning("Audio callback status", status=str(status))
-            mono = np.mean(indata, axis=1).astype(np.float32)
-            try:
-                self._queue.put_nowait(mono)
-            except queue.Full:
-                logger.warning("Audio queue full, dropping chunk")
+        speakers = sc.all_speakers()
+        if not speakers:
+            raise RuntimeError("No system speakers found for loopback capture")
 
         if device_index is None:
-            default_output = sd.default.device[1]
-            device_index = default_output
+            speaker = sc.default_speaker()
+        else:
+            if device_index < 0 or device_index >= len(speakers):
+                raise RuntimeError(f"Invalid speaker index: {device_index}")
+            speaker = speakers[device_index]
 
-        self._device_name = str(sd.query_devices(device_index)["name"])
-        self._stream = sd.InputStream(
-            samplerate=self.sample_rate,
-            channels=self.channels,
-            dtype="float32",
-            blocksize=self.block_size,
-            device=device_index,
-            callback=_callback,
-            extra_settings=extra,
-        )
-        self._stream.start()
+        self._device_name = speaker.name
+        loopback_mic = sc.get_microphone(speaker.name, include_loopback=True)
+        if loopback_mic is None:
+            raise RuntimeError(f"Loopback microphone not found for speaker: {speaker.name}")
+
+        self._stop_event.clear()
+
+        def _capture_loop() -> None:
+            # Use loopback recorder to capture system output audio as float32.
+            with loopback_mic.recorder(samplerate=self.sample_rate, channels=self.channels) as recorder:
+                while not self._stop_event.is_set():
+                    data = recorder.record(numframes=self.block_size)
+                    mono = np.asarray(data, dtype=np.float32)
+                    if mono.ndim > 1:
+                        mono = np.mean(mono, axis=1)
+                    try:
+                        self._queue.put_nowait(mono)
+                    except queue.Full:
+                        logger.warning("Audio queue full, dropping chunk")
+
+        self._thread = threading.Thread(target=_capture_loop, name="wasapi-loopback-capture", daemon=True)
+        self._thread.start()
 
     def stop(self) -> None:
-        if self._stream:
-            self._stream.stop()
-            self._stream.close()
-            self._stream = None
+        self._stop_event.set()
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=2)
+        self._thread = None
 
     def read_chunk(self, timeout_seconds: float = 3.0) -> np.ndarray:
         return self._queue.get(timeout=timeout_seconds)

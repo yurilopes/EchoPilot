@@ -9,6 +9,8 @@ if (-not (Test-Path ".venv")) {
 .\.venv\Scripts\python -m pip install --upgrade pip
 .\.venv\Scripts\pip install -e .
 .\.venv\Scripts\pip install -e .[dev]
+Write-Host "[setup] Installing CUDA runtime wheels for faster-whisper on Windows"
+.\.venv\Scripts\pip install -e .[cuda]
 Pop-Location
 
 Write-Host "[setup] Installing web dependencies"

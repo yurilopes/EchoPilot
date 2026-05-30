@@ -28,16 +28,36 @@ export function App() {
       .catch((e) => setError(String(e)));
     apiGet<{ text: string }>("/transcript").then((x) => setTranscript(x.text)).catch(() => undefined);
 
-    const ws = new WebSocket(socketUrl());
-    ws.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
-      if (msg.type === "status") setStatus(msg.data as RuntimeStatus);
-      if (msg.type === "transcript") setTranscript((prev) => `${prev}${prev ? "\n" : ""}${msg.text}`);
-      if (msg.type === "analysis") setAnalysis(msg.text);
-      if (msg.type === "error") setError(msg.message);
+    let stopped = false;
+    let ws: WebSocket | null = null;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const connect = () => {
+      if (stopped) return;
+      ws = new WebSocket(socketUrl());
+      ws.onopen = () => setError("");
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.type === "status") setStatus(msg.data as RuntimeStatus);
+        if (msg.type === "transcript") setTranscript((prev) => `${prev}${prev ? "\n" : ""}${msg.text}`);
+        if (msg.type === "analysis") setAnalysis(msg.text);
+        if (msg.type === "error") setError(msg.message);
+      };
+      ws.onclose = () => {
+        if (!stopped) {
+          setError("Connecting to core backend...");
+          retryTimer = setTimeout(connect, 1000);
+        }
+      };
+      ws.onerror = () => ws?.close();
     };
-    ws.onerror = () => setError("WebSocket connection failed. Is core running?");
-    return () => ws.close();
+
+    connect();
+    return () => {
+      stopped = true;
+      if (retryTimer) clearTimeout(retryTimer);
+      ws?.close();
+    };
   }, []);
 
   const statusCards = useMemo(
@@ -116,6 +136,11 @@ export function App() {
       </header>
 
       {error ? <div className="error">{error}</div> : null}
+      {status?.fallback_reason ? (
+        <div className="warning">
+          CUDA fallback active: {status.fallback_reason}. Running on CPU backend until CUDA runtime is healthy.
+        </div>
+      ) : null}
 
       <section className="grid">
         <article className="panel">

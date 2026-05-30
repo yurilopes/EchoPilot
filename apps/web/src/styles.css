@@ -80,6 +80,7 @@ textarea { min-height: 100px; resize: vertical; }
 .btn.primary { background: #123524; color: #f4f8f2; border-color: #123524; }
 .btn.accent { background: #b59b6a; color: #1f211b; border-color: #a68d5e; }
 .error { background: #ffe8e8; border: 1px solid #dc8d8d; border-radius: 12px; padding: 10px; }
+.warning { background: #fff2db; border: 1px solid #d9a455; border-radius: 12px; padding: 10px; color: #5f3d00; }
 
 @media (max-width: 900px) {
   .hero { align-items: flex-start; flex-direction: column; }
