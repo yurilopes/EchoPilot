@@ -5,6 +5,7 @@ src/realtime_system_transcriber/asr_engine.py
 src/realtime_system_transcriber/audio_capture.py
 src/realtime_system_transcriber/llm_client.py
 src/realtime_system_transcriber/main.py
+src/realtime_system_transcriber/model_registry.py
 src/realtime_system_transcriber/runtime.py
 src/realtime_system_transcriber/secrets.py
 src/realtime_system_transcriber/settings.py

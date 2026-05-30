@@ -11,6 +11,7 @@
 - Keep logs structured and actionable.
 - Do not hardcode credentials.
 - All repository artifacts must be written in English, including `README.md` and every `.md` documentation file.
+- Keep source code and `.md` files near 300 lines maximum. Small overflow is acceptable when splitting would hurt readability, but prefer modularization before files grow much beyond this threshold.
 
 ## Architecture Snapshot
 - `services/core`: Python FastAPI service with WASAPI loopback, ASR, transcript buffer, and LLM integration.

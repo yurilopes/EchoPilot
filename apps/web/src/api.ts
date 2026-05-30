@@ -27,6 +27,26 @@ export async function apiPutSettings(settings: RuntimeSettings): Promise<void> {
   if (!response.ok) throw new Error(await response.text());
 }
 
+export async function apiDownloadModel(engine: string, model_id: string): Promise<{ status: string; message: string }> {
+  return apiPost("/asr/download", { engine, model_id });
+}
+
+export async function apiCancelDownload(task_id: string): Promise<{ ok: boolean; error?: string }> {
+  return apiPost("/asr/download/cancel", { task_id });
+}
+
+export async function apiRetryDownload(task_id: string): Promise<{ ok: boolean; task?: unknown; error?: string }> {
+  return apiPost("/asr/download/retry", { task_id });
+}
+
+export async function apiApplyModel(engine: string, model_id: string, restart_if_running = true): Promise<{ ok: boolean; restarted: boolean }> {
+  return apiPost("/asr/apply", { engine, model_id, restart_if_running });
+}
+
+export async function apiWarmupModel(): Promise<{ ok: boolean; elapsed_ms: number }> {
+  return apiPost("/asr/warmup");
+}
+
 export function socketUrl(): string {
   return "ws://127.0.0.1:8765/ws";
 }

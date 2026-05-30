@@ -9,7 +9,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class RuntimeSettings(BaseModel):
     language: str = "en"
-    model_size: Literal["tiny", "base", "small"] = "base"
+    asr_engine: Literal["whisper", "parakeet"] = "whisper"
+    model_id: str = "base"
+    ai_enabled: bool = True
     chunk_seconds: float = 2.0
     analysis_interval_seconds: int = 0
     base_url: str = "https://api.deepseek.com"

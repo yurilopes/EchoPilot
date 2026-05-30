@@ -28,7 +28,7 @@ class RuntimeController:
         self.secret_store = secret_store
         self.transcript_store = TranscriptStore()
         self.capture = WasapiLoopbackCapture(block_seconds=runtime_settings.chunk_seconds)
-        self.asr = AsrEngine(runtime_settings.model_size, runtime_settings.language)
+        self.asr = AsrEngine(runtime_settings.asr_engine, runtime_settings.model_id, runtime_settings.language)
         self.llm = LlmClient()
         self.state = RuntimeState()
         self._runner_task: asyncio.Task[None] | None = None
@@ -38,7 +38,7 @@ class RuntimeController:
     async def start(self) -> None:
         if self.state.running:
             return
-        self.asr = AsrEngine(self.runtime_settings.model_size, self.runtime_settings.language)
+        self.asr = AsrEngine(self.runtime_settings.asr_engine, self.runtime_settings.model_id, self.runtime_settings.language)
         self.asr.initialize()
         self.capture.start()
         self.state.capture_device = self.capture.device_name
