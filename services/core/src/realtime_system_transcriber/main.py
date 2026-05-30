@@ -270,6 +270,12 @@ async def clear_api_key() -> dict:
     return {"ok": True}
 
 
+@app.get("/llm/credentials/status")
+async def llm_credentials_status() -> dict:
+    api_key = secret_store.get_api_key()
+    return {"configured": bool(api_key and api_key.strip())}
+
+
 @app.post("/transcription/start")
 async def start_transcription() -> dict:
     await runtime_controller.start()

@@ -17,7 +17,7 @@ import { LiveTranscriptPane } from "./components/LiveTranscriptPane";
 import { ModelRow } from "./components/ModelRow";
 import { RuntimeStatusStrip } from "./components/RuntimeStatusStrip";
 import { SessionControls } from "./components/SessionControls";
-import { filterAndSortModels, type SortBy, type SortDir } from "./modelCatalog";
+import { filterAndSortModels, type ModelFilterCriteria, type SortBy, type SortDir } from "./modelCatalog";
 import type { AsrModelRow, CatalogResponse, DownloadStateResponse, RuntimeSettings, RuntimeStatus, TabKey, TranscriptFollowState } from "./types";
 import { canAnalyzeNow, deriveAiReadiness, deriveSessionState } from "./uiState";
 
@@ -60,6 +60,14 @@ export function App() {
   const [modelFilter, setModelFilter] = useState("");
   const [sortBy, setSortBy] = useState<SortBy>("live");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [modelFilters, setModelFilters] = useState<ModelFilterCriteria>({
+    live: [],
+    quality: [],
+    speed: [],
+    size: [],
+    state: [],
+    installed: [],
+  });
   const [pendingApply, setPendingApply] = useState<{ engine: "whisper" | "parakeet"; modelId: string } | null>(null);
   const [autoApplyAfterDownload, setAutoApplyAfterDownload] = useState(false);
   const [warmupInfo, setWarmupInfo] = useState("");
@@ -68,11 +76,13 @@ export function App() {
   const [followState, setFollowState] = useState<TranscriptFollowState>("following");
   const [unreadChunks, setUnreadChunks] = useState(0);
   const [analysisUpdatedAt, setAnalysisUpdatedAt] = useState<number | null>(null);
+  const [aiKeyConfigured, setAiKeyConfigured] = useState(false);
   const [optimisticRunTarget, setOptimisticRunTarget] = useState<boolean | null>(null);
   const [optimisticRunUntil, setOptimisticRunUntil] = useState<number>(0);
-  const [expandedModelIds, setExpandedModelIds] = useState<Set<string>>(new Set());
   const transcriptRef = useRef<HTMLDivElement | null>(null);
   const followStateRef = useRef<TranscriptFollowState>("following");
+  const initializedRef = useRef(false);
+  const prevEngineRef = useRef<"whisper" | "parakeet">(DEFAULT_SETTINGS.asr_engine);
   const nowMs = Date.now();
 
   const refreshCatalog = async () => setCatalog(await apiGet<CatalogResponse>("/asr/catalog"));
@@ -88,7 +98,7 @@ export function App() {
       .trim();
   };
 
-  const aiReadiness = deriveAiReadiness(settings, status);
+  const aiReadiness = deriveAiReadiness(settings, status, aiKeyConfigured);
   const hasOptimisticRun = optimisticRunTarget !== null && nowMs < optimisticRunUntil;
   const effectiveRunning = hasOptimisticRun ? optimisticRunTarget : (status?.running ?? false);
   const sessionState = deriveSessionState({ ...(status ?? ({} as RuntimeStatus)), running: effectiveRunning }, inFlight, !!error);
@@ -100,39 +110,45 @@ export function App() {
   }, [followState]);
 
   useEffect(() => {
-    apiGet<RuntimeSettings>("/settings")
-      .then(setSettings)
-      .catch((e) => {
-        if (String(e).toLowerCase().includes("core api is temporarily unavailable")) {
-          setBackendConnecting(true);
-          return;
-        }
-        setError(String(e));
-      });
+    if (!initializedRef.current) {
+      initializedRef.current = true;
+      apiGet<RuntimeSettings>("/settings")
+        .then(setSettings)
+        .catch((e) => {
+          if (String(e).toLowerCase().includes("core api is temporarily unavailable")) {
+            setBackendConnecting(true);
+            return;
+          }
+          setError(String(e));
+        });
 
-    apiGet<{ status: RuntimeStatus }>("/health")
-      .then((x) => {
-        setStatus(x.status);
-        setBackendConnecting(false);
-      })
-      .catch((e) => {
+      apiGet<{ status: RuntimeStatus }>("/health")
+        .then((x) => {
+          setStatus(x.status);
+          setBackendConnecting(false);
+        })
+        .catch((e) => {
+          if (String(e).toLowerCase().includes("core api is temporarily unavailable")) {
+            setBackendConnecting(true);
+            return;
+          }
+          setError(String(e));
+        });
+      apiGet<{ text: string }>("/transcript")
+        .then((x) => setTranscript(normalizeTranscriptChunk(String(x.text ?? ""))))
+        .catch(() => undefined);
+      refreshCatalog().catch((e) => {
         if (String(e).toLowerCase().includes("core api is temporarily unavailable")) {
           setBackendConnecting(true);
           return;
         }
-        setError(String(e));
+        // Catalog failures should not interrupt live transcription UX.
+        console.warn("catalog_refresh_failed", e);
       });
-    apiGet<{ text: string }>("/transcript")
-      .then((x) => setTranscript(normalizeTranscriptChunk(String(x.text ?? ""))))
-      .catch(() => undefined);
-    refreshCatalog().catch((e) => {
-      if (String(e).toLowerCase().includes("core api is temporarily unavailable")) {
-        setBackendConnecting(true);
-        return;
-      }
-      // Catalog failures should not interrupt live transcription UX.
-      console.warn("catalog_refresh_failed", e);
-    });
+      apiGet<{ configured: boolean }>("/llm/credentials/status")
+        .then((x) => setAiKeyConfigured(!!x.configured))
+        .catch(() => setAiKeyConfigured(false));
+    }
 
     let stopped = false;
     let ws: WebSocket | null = null;
@@ -221,20 +237,43 @@ export function App() {
   const activeModels = useMemo(() => {
     if (!catalog) return [] as AsrModelRow[];
     const rows = settings.asr_engine === "whisper" ? catalog.models.whisper : catalog.models.parakeet;
-    return filterAndSortModels(rows, modelFilter, sortBy, sortDir);
-  }, [catalog, settings.asr_engine, modelFilter, sortBy, sortDir]);
+    return filterAndSortModels(rows, modelFilter, sortBy, sortDir, modelFilters);
+  }, [catalog, settings.asr_engine, modelFilter, sortBy, sortDir, modelFilters]);
+
+  const activeEngineRows = useMemo(() => {
+    if (!catalog) return [] as AsrModelRow[];
+    return settings.asr_engine === "whisper" ? catalog.models.whisper : catalog.models.parakeet;
+  }, [catalog, settings.asr_engine]);
+
+  const filterOptions = useMemo(() => {
+    const uniq = (arr: string[]) => [...new Set(arr)].sort((a, b) => a.localeCompare(b));
+    return {
+      live: uniq(activeEngineRows.map((m) => m.profile.live_suitability)),
+      quality: uniq(activeEngineRows.map((m) => m.profile.quality)),
+      speed: uniq(activeEngineRows.map((m) => m.profile.speed)),
+      size: uniq(activeEngineRows.map((m) => m.profile.footprint)),
+      state: uniq(activeEngineRows.map((m) => m.availability)),
+    };
+  }, [activeEngineRows]);
+
+  const toggleFilter = <K extends keyof ModelFilterCriteria>(key: K, value: ModelFilterCriteria[K][number]) => {
+    setModelFilters((prev) => {
+      const current = prev[key] as Array<typeof value>;
+      const next = current.includes(value) ? current.filter((x) => x !== value) : [...current, value];
+      return { ...prev, [key]: next };
+    });
+  };
 
   useEffect(() => {
-    setExpandedModelIds((prev) => {
-      const next = new Set(prev);
-      for (const model of activeModels) {
-        if (model.download_state === "downloading" || model.download_state === "queued" || model.download_state === "error") {
-          next.add(model.id);
-        }
-      }
-      return next;
+    if (!initializedRef.current) return;
+    if (prevEngineRef.current === settings.asr_engine) return;
+    prevEngineRef.current = settings.asr_engine;
+    setModelFilters({ live: [], quality: [], speed: [], size: [], state: [], installed: [] });
+    setModelFilter("");
+    void safe(async () => {
+      await refreshCatalog();
     });
-  }, [activeModels]);
+  }, [settings.asr_engine]);
 
   const elapsedSeconds = (startedAt: number | null | undefined) => (startedAt ? Math.max(0, Math.floor(now / 1000 - startedAt)) : 0);
   const analysisUpdatedLabel = analysisUpdatedAt ? `Updated ${Math.max(0, Math.floor((Date.now() - analysisUpdatedAt) / 1000))}s ago` : "No analysis updates yet";
@@ -322,10 +361,10 @@ export function App() {
   };
 
   const applyModelDirect = async (modelId: string) => {
-    const nextSettings = { ...settings, model_id: modelId };
-    setSettings(nextSettings);
-    await apiPutSettings(nextSettings);
-    await apiApplyModel(nextSettings.asr_engine, modelId, true);
+    // Backend /asr/apply persists runtime settings atomically.
+    await apiApplyModel(settings.asr_engine, modelId, true);
+    const persistedSettings = await apiGet<RuntimeSettings>("/settings");
+    setSettings(persistedSettings);
     await refreshCatalog();
     setTab("live");
   };
@@ -371,8 +410,13 @@ export function App() {
       />
 
       <nav className="tabs">
-        {["live", "ai", "models", "settings"].map((item) => (
-          <button key={item} className={`tab ${tab === item ? "active" : ""}`} onClick={() => setTab(item as TabKey)}>{item[0].toUpperCase() + item.slice(1)}</button>
+        {[
+          { key: "live", label: "Live" },
+          { key: "ai", label: "AI" },
+          { key: "models", label: "Models" },
+          { key: "settings", label: "Settings" },
+        ].map((item) => (
+          <button key={item.key} className={`tab ${tab === item.key ? "active" : ""}`} onClick={() => setTab(item.key as TabKey)}>{item.label}</button>
         ))}
       </nav>
 
@@ -406,7 +450,7 @@ export function App() {
       ) : null}
 
       {tab === "ai" ? (
-        <section className="panel">
+        <section className="panel tab-panel">
           <h2>AI Configuration</h2>
           <AiReadinessCard readinessState={aiReadiness.state} readinessMessage={aiReadiness.message} statusLabel={aiReadiness.state === "ready" ? "Configured" : "Needs setup"} />
           <div className="form-grid" style={{ marginTop: 12 }}>
@@ -416,16 +460,22 @@ export function App() {
             <label>Periodic Analysis (s)<input type="number" min={0} max={600} value={settings.analysis_interval_seconds} onChange={(e) => setSettings({ ...settings, analysis_interval_seconds: Number(e.target.value) })} /><span className="muted">Lower values increase API usage and UI churn.</span></label>
             <label className="wide">Analysis Prompt<textarea value={settings.prompt} onChange={(e) => setSettings({ ...settings, prompt: e.target.value })} /></label>
             <label className="wide">API Key (stored in Windows Credential Manager)<input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} /></label>
-            <div className="row wide"><button className="btn" onClick={() => safe(async () => { await apiPutSettings(settings); await refreshCatalog(); })}>Save AI Settings</button><button className="btn" onClick={() => safe(async () => { await apiPost("/llm/credentials", { api_key: apiKey }); setApiKey(""); })}>Save API Key</button></div>
+            <div className="row wide"><button className="btn" onClick={() => safe(async () => { await apiPutSettings(settings); await refreshCatalog(); })}>Save AI Settings</button><button className="btn" onClick={() => safe(async () => { await apiPost("/llm/credentials", { api_key: apiKey }); setApiKey(""); setAiKeyConfigured(true); })}>Save API Key</button></div>
           </div>
         </section>
       ) : null}
 
       {tab === "models" ? (
-        <section className="panel">
-          <h2>ASR Model Manager</h2>
-          <div className="selected-model"><span className="muted">Current runtime model</span><strong>{status?.model ?? "unknown"}</strong><span className="muted">engine: {status?.backend_asr ?? "-"}</span></div>
-          <div className="selected-model"><span className="muted">Selected pending model</span><strong>{settings.model_id || "none"}</strong><span className="muted">engine: {settings.asr_engine}</span></div>
+        <section className="panel tab-panel models-tab-panel">
+          <div className="models-inline-status">
+            <span className="muted">Runtime:</span>
+            <strong>{status?.model ?? "unknown"}</strong>
+            <span className="muted">({status?.backend_asr ?? "-"})</span>
+            <span className="models-sep">|</span>
+            <span className="muted">Selected:</span>
+            <strong>{settings.model_id || "none"}</strong>
+            <span className="muted">({settings.asr_engine})</span>
+          </div>
           <div className="queue-summary">
             <span className="badge badge-soft">active: {downloadState?.active_task_id ?? "none"}</span>
             <span className="badge badge-soft">queued: {downloadState?.queued_count ?? 0}</span>
@@ -436,10 +486,101 @@ export function App() {
 
           <div className="models-toolbar">
             <div className="models-toolbar-main row">
-              <select value={settings.asr_engine} onChange={(e) => setSettings({ ...settings, asr_engine: e.target.value as "whisper" | "parakeet" })}><option value="whisper">Whisper</option><option value="parakeet">Parakeet</option></select>
+              <select
+                value={settings.asr_engine}
+                onChange={(e) => {
+                  const engine = e.target.value as "whisper" | "parakeet";
+                  const nextSettings = { ...settings, asr_engine: engine };
+                  setSettings(nextSettings);
+                  setModelFilters({ live: [], quality: [], speed: [], size: [], state: [], installed: [] });
+                  setModelFilter("");
+                  void safe(async () => {
+                    await apiPutSettings(nextSettings);
+                  });
+                  void safe(async () => {
+                    await refreshCatalog();
+                  });
+                }}
+              >
+                <option value="whisper">Whisper</option>
+                <option value="parakeet">Parakeet</option>
+              </select>
               <input value={modelFilter} onChange={(e) => setModelFilter(e.target.value)} placeholder="Filter model id..." />
-              <select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortBy)}><option value="downloads">Sort: downloads</option><option value="speed">Sort: speed</option><option value="quality">Sort: quality</option><option value="live">Sort: live suitability</option><option value="size">Sort: model size</option><option value="installed">Sort: installed</option><option value="name">Sort: name</option></select>
-              <select value={sortDir} onChange={(e) => setSortDir(e.target.value as SortDir)}><option value="desc">Order: desc</option><option value="asc">Order: asc</option></select>
+            </div>
+            <div className="models-filter-dropdowns row">
+              <details className="filter-dropdown">
+                <summary>Live suitability ({modelFilters.live.length})</summary>
+                <div className="models-filter-options">
+                  {filterOptions.live.map((v) => (
+                    <label key={`live-${v}`} className="inline-check">
+                      <input type="checkbox" checked={modelFilters.live.includes(v)} onChange={() => toggleFilter("live", v)} />
+                      {v}
+                    </label>
+                  ))}
+                </div>
+              </details>
+              <details className="filter-dropdown">
+                <summary>Quality ({modelFilters.quality.length})</summary>
+                <div className="models-filter-options">
+                  {filterOptions.quality.map((v) => (
+                    <label key={`quality-${v}`} className="inline-check">
+                      <input type="checkbox" checked={modelFilters.quality.includes(v)} onChange={() => toggleFilter("quality", v)} />
+                      {v}
+                    </label>
+                  ))}
+                </div>
+              </details>
+              <details className="filter-dropdown">
+                <summary>Speed ({modelFilters.speed.length})</summary>
+                <div className="models-filter-options">
+                  {filterOptions.speed.map((v) => (
+                    <label key={`speed-${v}`} className="inline-check">
+                      <input type="checkbox" checked={modelFilters.speed.includes(v)} onChange={() => toggleFilter("speed", v)} />
+                      {v}
+                    </label>
+                  ))}
+                </div>
+              </details>
+              <details className="filter-dropdown">
+                <summary>Size ({modelFilters.size.length})</summary>
+                <div className="models-filter-options">
+                  {filterOptions.size.map((v) => (
+                    <label key={`size-${v}`} className="inline-check">
+                      <input type="checkbox" checked={modelFilters.size.includes(v)} onChange={() => toggleFilter("size", v)} />
+                      {v}
+                    </label>
+                  ))}
+                </div>
+              </details>
+              <details className="filter-dropdown">
+                <summary>State ({modelFilters.state.length})</summary>
+                <div className="models-filter-options">
+                  {filterOptions.state.map((v) => (
+                    <label key={`state-${v}`} className="inline-check">
+                      <input type="checkbox" checked={modelFilters.state.includes(v)} onChange={() => toggleFilter("state", v)} />
+                      {v}
+                    </label>
+                  ))}
+                </div>
+              </details>
+              <details className="filter-dropdown">
+                <summary>Installed ({modelFilters.installed.length})</summary>
+                <div className="models-filter-options">
+                  {(["yes", "no"] as const).map((v) => (
+                    <label key={`installed-${v}`} className="inline-check">
+                      <input type="checkbox" checked={modelFilters.installed.includes(v)} onChange={() => toggleFilter("installed", v)} />
+                      {v}
+                    </label>
+                  ))}
+                </div>
+              </details>
+              <details className="filter-dropdown advanced-sort">
+                <summary>Advanced sort</summary>
+                <div className="models-filter-options">
+                  <select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortBy)}><option value="downloads">downloads</option><option value="speed">speed</option><option value="quality">quality</option><option value="live">live suitability</option><option value="size">model size</option><option value="installed">installed</option><option value="name">name</option></select>
+                  <select value={sortDir} onChange={(e) => setSortDir(e.target.value as SortDir)}><option value="desc">desc</option><option value="asc">asc</option></select>
+                </div>
+              </details>
             </div>
             <div className="models-toolbar-actions row">
               <button className="btn" onClick={() => safe(async () => { await apiPutSettings(settings); await refreshCatalog(); })}>Select Model</button>
@@ -447,22 +588,28 @@ export function App() {
               <label className="inline-check"><input type="checkbox" checked={autoApplyAfterDownload} onChange={(e) => setAutoApplyAfterDownload(e.target.checked)} />Auto-apply after download</label>
               <button className="btn btn-quiet" onClick={() => safe(refreshCatalog)}>Refresh</button>
               <button className="btn btn-quiet" onClick={() => safe(warmupWithRetry)}>Warmup</button>
+              <button className="btn btn-quiet" onClick={() => setModelFilters({ live: [], quality: [], speed: [], size: [], state: [], installed: [] })}>Clear filters</button>
             </div>
           </div>
           {warmupInfo ? <div className="muted" style={{ marginBottom: 10 }}>{warmupInfo}</div> : null}
 
           <div className="model-list">
+            {activeModels.length === 0 ? (
+              <div className="model-empty">
+                <strong>No models match current filters.</strong>
+                <span className="muted">Try clearing filters or switching engine.</span>
+                <button className="btn btn-quiet" onClick={() => setModelFilters({ live: [], quality: [], speed: [], size: [], state: [], installed: [] })}>Clear filters</button>
+              </div>
+            ) : null}
             {activeModels.slice(0, 200).map((model) => {
               const isSelected = model.id === settings.model_id || model.is_selected;
               const isRuntimeModel = (status?.model ?? "") === model.id;
-              const isExpanded = expandedModelIds.has(model.id);
               return (
                 <ModelRow
                   key={model.id}
                   model={model}
                   isSelected={isSelected}
                   isRuntimeModel={isRuntimeModel}
-                  isExpanded={isExpanded}
                   elapsedSeconds={elapsedSeconds(model.task_timestamps?.started_at)}
                   canUse={model.availability === "ready" && !isSelected}
                   bytes={bytes}
@@ -470,12 +617,6 @@ export function App() {
                   onDownload={(modelId) => safe(async () => { await apiDownloadModel(settings.asr_engine, modelId); if (autoApplyAfterDownload) setPendingApply({ engine: settings.asr_engine, modelId }); await refreshCatalog(); })}
                   onCancel={(taskId) => safe(async () => { await apiCancelDownload(taskId); await refreshCatalog(); })}
                   onRetry={(taskId) => safe(async () => { await apiRetryDownload(taskId); await refreshCatalog(); })}
-                  onToggleExpanded={() => setExpandedModelIds((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(model.id)) next.delete(model.id);
-                    else next.add(model.id);
-                    return next;
-                  })}
                 />
               );
             })}
@@ -484,7 +625,7 @@ export function App() {
       ) : null}
 
       {tab === "settings" ? (
-        <section className="panel">
+        <section className="panel tab-panel">
           <h2>Runtime Settings</h2>
           <div className="form-grid">
             <label>Language<select value={settings.language} onChange={(e) => setSettings({ ...settings, language: e.target.value })}><option value="en">English</option><option value="pt">Portuguese</option><option value="es">Spanish</option><option value="fr">French</option><option value="de">German</option></select></label>

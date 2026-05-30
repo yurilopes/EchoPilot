@@ -18,9 +18,6 @@ export function LiveTranscriptPane({ text, followState, unreadCount, preRef, onS
     <article className="panel transcript-panel">
       <div className="panel-head">
         <h2>Live Transcript</h2>
-        <span className={`badge badge-primary ${followState === "following" ? "badge-selected" : ""}`}>
-          {followState === "following" ? "Following" : "Paused"}
-        </span>
       </div>
       <div ref={preRef} className="transcript-pre" onScroll={onScroll}>
         <span className="transcript-line">{singleLineText || "No transcript yet."}</span>

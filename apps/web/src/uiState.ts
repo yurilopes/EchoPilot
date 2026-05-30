@@ -8,10 +8,17 @@ export function deriveSessionState(status: RuntimeStatus | null, inFlight: "none
   return "idle";
 }
 
-export function deriveAiReadiness(settings: RuntimeSettings, status: RuntimeStatus | null): { state: AiReadinessState; message: string } {
+export function deriveAiReadiness(
+  settings: RuntimeSettings,
+  status: RuntimeStatus | null,
+  aiKeyConfigured: boolean,
+): { state: AiReadinessState; message: string } {
   if (!settings.ai_enabled) return { state: "disabled", message: "AI analysis is disabled." };
   if (!settings.base_url.trim() || !settings.llm_model.trim() || !settings.prompt.trim()) {
     return { state: "invalid_config", message: "Complete Base URL, model, and prompt." };
+  }
+  if (!aiKeyConfigured) {
+    return { state: "missing_key", message: "API key is not configured." };
   }
 
   const llmStatus = (status?.llm_connection_status ?? "unknown").toLowerCase();

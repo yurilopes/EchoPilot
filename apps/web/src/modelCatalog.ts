@@ -9,6 +9,14 @@ const rank = {
 
 export type SortBy = "name" | "downloads" | "speed" | "quality" | "live" | "size" | "installed";
 export type SortDir = "asc" | "desc";
+export type ModelFilterCriteria = {
+  live: string[];
+  quality: string[];
+  speed: string[];
+  size: string[];
+  state: string[];
+  installed: Array<"yes" | "no">;
+};
 
 function scoreModel(model: AsrModelRow, sortBy: SortBy): number {
   if (sortBy === "downloads") return model.downloads ?? 0;
@@ -20,12 +28,31 @@ function scoreModel(model: AsrModelRow, sortBy: SortBy): number {
   return 0;
 }
 
-export function filterAndSortModels(models: AsrModelRow[], filterText: string, sortBy: SortBy, sortDir: SortDir): AsrModelRow[] {
+export function filterAndSortModels(
+  models: AsrModelRow[],
+  filterText: string,
+  sortBy: SortBy,
+  sortDir: SortDir,
+  criteria?: ModelFilterCriteria,
+): AsrModelRow[] {
   const filtered = !filterText.trim()
     ? models
     : models.filter((model) => model.id.toLowerCase().includes(filterText.toLowerCase()));
 
-  return [...filtered].sort((a, b) => {
+  const criteriaFiltered = !criteria
+    ? filtered
+    : filtered.filter((model) => {
+        const byLive = criteria.live.length === 0 || criteria.live.includes(model.profile.live_suitability);
+        const byQuality = criteria.quality.length === 0 || criteria.quality.includes(model.profile.quality);
+        const bySpeed = criteria.speed.length === 0 || criteria.speed.includes(model.profile.speed);
+        const bySize = criteria.size.length === 0 || criteria.size.includes(model.profile.footprint);
+        const byState = criteria.state.length === 0 || criteria.state.includes(model.availability);
+        const installedValue: "yes" | "no" = model.installed ? "yes" : "no";
+        const byInstalled = criteria.installed.length === 0 || criteria.installed.includes(installedValue);
+        return byLive && byQuality && bySpeed && bySize && byState && byInstalled;
+      });
+
+  return [...criteriaFiltered].sort((a, b) => {
     if (sortBy === "name") {
       return sortDir === "asc" ? a.id.localeCompare(b.id) : b.id.localeCompare(a.id);
     }
