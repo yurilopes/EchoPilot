@@ -17,6 +17,22 @@ from realtime_system_transcriber.telemetry import configure_logging
 
 app_settings = AppSettings()
 runtime_settings = ensure_runtime_settings(app_settings.settings_path)
+if runtime_settings.asr_engine == "whisper" and "/" in runtime_settings.model_id:
+    model_lower = runtime_settings.model_id.lower()
+    compatible = ("faster-whisper" in model_lower) or ("ctranslate2" in model_lower) or model_lower.startswith("systran/")
+    if not compatible:
+        runtime_settings = RuntimeSettings(
+            language=runtime_settings.language,
+            asr_engine="whisper",
+            model_id="base",
+            ai_enabled=runtime_settings.ai_enabled,
+            chunk_seconds=runtime_settings.chunk_seconds,
+            analysis_interval_seconds=runtime_settings.analysis_interval_seconds,
+            base_url=runtime_settings.base_url,
+            llm_model=runtime_settings.llm_model,
+            prompt=runtime_settings.prompt,
+        )
+        save_runtime_settings(app_settings.settings_path, runtime_settings)
 secret_store = SecretStore(app_settings.secret_service_name, app_settings.secret_username)
 runtime_controller = RuntimeController(runtime_settings, secret_store)
 model_registry = AsrModelRegistry(cache_dir=app_settings.settings_path.parent / "hf-cache")
@@ -104,8 +120,14 @@ async def update_settings(payload: RuntimeSettingsUpdate) -> dict:
 async def asr_catalog() -> dict:
     selected_engine = runtime_controller.runtime_settings.asr_engine
     selected_model_id = runtime_controller.runtime_settings.model_id
-    whisper_rows = model_registry.list_models("whisper")
-    parakeet_rows = model_registry.list_models("parakeet")
+    try:
+        whisper_rows = model_registry.list_models("whisper")
+    except Exception:
+        whisper_rows = []
+    try:
+        parakeet_rows = model_registry.list_models("parakeet")
+    except Exception:
+        parakeet_rows = []
 
     def annotate(rows: list[dict], engine: str) -> list[dict]:
         annotated: list[dict] = []

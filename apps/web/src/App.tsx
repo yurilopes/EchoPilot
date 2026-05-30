@@ -46,6 +46,7 @@ function bytes(value: number | null): string {
 }
 
 export function App() {
+  const transcriptDebug = (import.meta.env.VITE_ECHOPILOT_TRANSCRIPT_DEBUG ?? "").toString() === "1";
   const [tab, setTab] = useState<TabKey>("live");
   const [status, setStatus] = useState<RuntimeStatus | null>(null);
   const [settings, setSettings] = useState<RuntimeSettings>(DEFAULT_SETTINGS);
@@ -67,24 +68,71 @@ export function App() {
   const [followState, setFollowState] = useState<TranscriptFollowState>("following");
   const [unreadChunks, setUnreadChunks] = useState(0);
   const [analysisUpdatedAt, setAnalysisUpdatedAt] = useState<number | null>(null);
+  const [optimisticRunTarget, setOptimisticRunTarget] = useState<boolean | null>(null);
+  const [optimisticRunUntil, setOptimisticRunUntil] = useState<number>(0);
   const [expandedModelIds, setExpandedModelIds] = useState<Set<string>>(new Set());
-  const transcriptRef = useRef<HTMLPreElement | null>(null);
+  const transcriptRef = useRef<HTMLDivElement | null>(null);
   const followStateRef = useRef<TranscriptFollowState>("following");
+  const nowMs = Date.now();
 
   const refreshCatalog = async () => setCatalog(await apiGet<CatalogResponse>("/asr/catalog"));
+
+  const normalizeTranscriptChunk = (value: string): string => {
+    return value
+      .replace(/-\s*[\r\n\u000B\u000C\u0085\u2028\u2029]+\s*/g, "")
+      .replace(/\\r\\n|\\n|\\r/g, " ")
+      .replace(/[\r\n\u000B\u000C\u0085\u2028\u2029]+/g, " ")
+      .replace(/\u00A0/g, " ")
+      .replace(/[\u0000-\u0009\u000E-\u001F\u007F]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  };
+
   const aiReadiness = deriveAiReadiness(settings, status);
-  const sessionState = deriveSessionState(status, inFlight, !!error);
+  const hasOptimisticRun = optimisticRunTarget !== null && nowMs < optimisticRunUntil;
+  const effectiveRunning = hasOptimisticRun ? optimisticRunTarget : (status?.running ?? false);
+  const sessionState = deriveSessionState({ ...(status ?? ({} as RuntimeStatus)), running: effectiveRunning }, inFlight, !!error);
   const analyzeEnabled = canAnalyzeNow(aiReadiness.state, transcript);
+  const displayedTranscript = normalizeTranscriptChunk(transcript);
 
   useEffect(() => {
     followStateRef.current = followState;
   }, [followState]);
 
   useEffect(() => {
-    apiGet<RuntimeSettings>("/settings").then(setSettings).catch((e) => setError(String(e)));
-    apiGet<{ status: RuntimeStatus }>("/health").then((x) => setStatus(x.status)).catch((e) => setError(String(e)));
-    apiGet<{ text: string }>("/transcript").then((x) => setTranscript(x.text)).catch(() => undefined);
-    refreshCatalog().catch((e) => setError(String(e)));
+    apiGet<RuntimeSettings>("/settings")
+      .then(setSettings)
+      .catch((e) => {
+        if (String(e).toLowerCase().includes("core api is temporarily unavailable")) {
+          setBackendConnecting(true);
+          return;
+        }
+        setError(String(e));
+      });
+
+    apiGet<{ status: RuntimeStatus }>("/health")
+      .then((x) => {
+        setStatus(x.status);
+        setBackendConnecting(false);
+      })
+      .catch((e) => {
+        if (String(e).toLowerCase().includes("core api is temporarily unavailable")) {
+          setBackendConnecting(true);
+          return;
+        }
+        setError(String(e));
+      });
+    apiGet<{ text: string }>("/transcript")
+      .then((x) => setTranscript(normalizeTranscriptChunk(String(x.text ?? ""))))
+      .catch(() => undefined);
+    refreshCatalog().catch((e) => {
+      if (String(e).toLowerCase().includes("core api is temporarily unavailable")) {
+        setBackendConnecting(true);
+        return;
+      }
+      // Catalog failures should not interrupt live transcription UX.
+      console.warn("catalog_refresh_failed", e);
+    });
 
     let stopped = false;
     let ws: WebSocket | null = null;
@@ -102,7 +150,12 @@ export function App() {
         const msg = JSON.parse(event.data);
         if (msg.type === "status") setStatus(msg.data as RuntimeStatus);
         if (msg.type === "transcript") {
-          setTranscript((prev) => `${prev}${prev ? "\n" : ""}${msg.text}`);
+          const normalized = normalizeTranscriptChunk(String(msg.text ?? ""));
+          if (!normalized) return;
+          if (transcriptDebug && /[\r\n\u0085\u2028\u2029]/.test(String(msg.text ?? ""))) {
+            console.debug("transcript_debug_ws_payload_contains_linebreak", JSON.stringify(msg.text ?? "").slice(0, 240));
+          }
+          setTranscript((prev) => normalizeTranscriptChunk(`${prev}${prev ? " " : ""}${normalized}`));
           if (followStateRef.current === "paused") setUnreadChunks((v) => v + 1);
         }
         if (msg.type === "analysis") {
@@ -197,8 +250,32 @@ export function App() {
       await fn();
       setError("");
     } catch (e) {
+      if (String(e).toLowerCase().includes("core api is temporarily unavailable")) {
+        setBackendConnecting(true);
+        return;
+      }
       setError(String(e));
     }
+  };
+
+  const isTransientCoreUnavailable = (value: unknown): boolean =>
+    String(value).toLowerCase().includes("core api is temporarily unavailable");
+
+  const reconcileRunningStateAfterTransientError = async (expectedRunning: boolean): Promise<boolean> => {
+    try {
+      const health = await apiGet<{ status: RuntimeStatus }>("/health");
+      setStatus(health.status);
+      const matches = !!health.status?.running === expectedRunning;
+      if (matches) {
+        setOptimisticRunTarget(expectedRunning);
+        setOptimisticRunUntil(Date.now() + 2500);
+        setError("");
+        return true;
+      }
+    } catch {
+      // keep original error path
+    }
+    return false;
   };
 
   const onStart = () => safe(async () => {
@@ -207,6 +284,14 @@ export function App() {
     setTab("live");
     try {
       await apiPost("/transcription/start");
+      setOptimisticRunTarget(true);
+      setOptimisticRunUntil(Date.now() + 2500);
+    } catch (e) {
+      if (isTransientCoreUnavailable(e)) {
+        const recovered = await reconcileRunningStateAfterTransientError(true);
+        if (recovered) return;
+      }
+      throw e;
     } finally {
       setInFlight("none");
     }
@@ -217,12 +302,20 @@ export function App() {
     setInFlight("stopping");
     try {
       await apiPost("/transcription/stop");
+      setOptimisticRunTarget(false);
+      setOptimisticRunUntil(Date.now() + 2500);
+    } catch (e) {
+      if (isTransientCoreUnavailable(e)) {
+        const recovered = await reconcileRunningStateAfterTransientError(false);
+        if (recovered) return;
+      }
+      throw e;
     } finally {
       setInFlight("none");
     }
   });
 
-  const onTranscriptScroll = (ev: UIEvent<HTMLPreElement>) => {
+  const onTranscriptScroll = (ev: UIEvent<HTMLDivElement>) => {
     const el = ev.currentTarget;
     const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
     setFollowState(nearBottom ? "following" : "paused");
@@ -291,7 +384,7 @@ export function App() {
       {tab === "live" ? (
         <section className="live-grid live-fill">
           <LiveTranscriptPane
-            text={transcript}
+            text={displayedTranscript}
             followState={followState}
             unreadCount={unreadChunks}
             preRef={transcriptRef}

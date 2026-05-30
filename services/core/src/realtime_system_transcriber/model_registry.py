@@ -30,30 +30,38 @@ class AsrModelRegistry:
 
     def list_models(self, query: str) -> list[dict]:
         try:
-            models = self.api.list_models(
+            models_iter = self.api.list_models(
                 search=query,
                 pipeline_tag="automatic-speech-recognition",
                 sort="downloads",
                 limit=200,
             )
+            models = list(models_iter)
         except Exception:
+            logger.warning("model_catalog_fetch_failed", engine=query)
             models = []
         rows: list[dict] = []
-        for model in models:
-            model_id = model.id
-            if query == "parakeet" and "parakeet" not in model_id.lower():
-                continue
-            if query == "whisper" and "whisper" not in model_id.lower():
-                continue
-            rows.append(
-                {
-                    "id": model_id,
-                    "downloads": getattr(model, "downloads", None),
-                    "last_modified": str(getattr(model, "last_modified", "")),
-                    "installed": self.is_installed(query, model_id),
-                    "profile": profile_model(query, model_id),
-                }
-            )
+        try:
+            for model in models:
+                model_id = model.id
+                if query == "parakeet" and "parakeet" not in model_id.lower():
+                    continue
+                if query == "whisper" and "whisper" not in model_id.lower():
+                    continue
+                if query == "whisper" and not self._is_whisper_compatible_model_id(model_id):
+                    continue
+                rows.append(
+                    {
+                        "id": model_id,
+                        "downloads": getattr(model, "downloads", None),
+                        "last_modified": str(getattr(model, "last_modified", "")),
+                        "installed": self.is_installed(query, model_id),
+                        "profile": profile_model(query, model_id),
+                    }
+                )
+        except Exception:
+            logger.warning("model_catalog_iteration_failed", engine=query)
+            rows = []
         if query == "whisper":
             aliases = ["tiny", "base", "small", "medium", "large-v2", "large-v3", "turbo"]
             known = {x["id"] for x in rows}
@@ -70,6 +78,17 @@ class AsrModelRegistry:
                         },
                     )
         return rows
+
+    def _is_whisper_compatible_model_id(self, model_id: str) -> bool:
+        # faster-whisper expects either built-in aliases or CTranslate2-converted repositories.
+        if "/" not in model_id:
+            return True
+        mid = model_id.lower()
+        return (
+            "faster-whisper" in mid
+            or "ctranslate2" in mid
+            or mid.startswith("systran/")
+        )
 
     def enqueue_download(self, engine: str, model_id: str) -> dict:
         if engine == "whisper" and "/" not in model_id:

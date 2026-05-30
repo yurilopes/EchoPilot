@@ -101,9 +101,23 @@ textarea { min-height: 100px; resize: vertical; }
 .live-fill { height: calc(100vh - 252px); min-height: 420px; }
 .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
 .transcript-panel, .analysis-panel { display: flex; flex-direction: column; min-height: 0; }
-.transcript-pre, .analysis-pre { flex: 1; overflow: auto; min-height: 0; white-space: pre-wrap; overflow-wrap: break-word; word-break: normal; }
-.transcript-pre { font-size: 15px; line-height: 1.6; letter-spacing: 0.01em; }
-.analysis-pre { font-size: 13px; line-height: 1.55; }
+.transcript-pre, .analysis-pre { flex: 1; overflow: auto; min-height: 0; min-width: 0; }
+.transcript-pre {
+  font-size: 15px;
+  line-height: 1.6;
+  letter-spacing: 0.01em;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+.transcript-line {
+  display: block;
+  white-space: normal;
+  max-width: 100%;
+}
+.analysis-pre { font-size: 13px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: break-word; word-break: normal; }
 .transcript-jump {
   position: sticky;
   bottom: 0;

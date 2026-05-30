@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -34,6 +35,8 @@ class RuntimeController:
         self._runner_task: asyncio.Task[None] | None = None
         self._analysis_task: asyncio.Task[None] | None = None
         self._subscribers: set[asyncio.Queue[dict]] = set()
+        self._debug_transcript = os.environ.get("ECHOPILOT_TRANSCRIPT_DEBUG", "").strip() == "1"
+        self._debug_chunk_count = 0
 
     async def start(self) -> None:
         if self.state.running:
@@ -65,8 +68,25 @@ class RuntimeController:
                 chunk = await asyncio.to_thread(self.capture.read_chunk)
                 text = await asyncio.to_thread(self.asr.transcribe_chunk, chunk, self.capture.sample_rate)
                 if text:
-                    self.transcript_store.add(text)
-                    await self.broadcast({"type": "transcript", "text": text, "timestamp": _utc_iso()})
+                    if self._debug_transcript:
+                        self._debug_chunk_count += 1
+                        if self._debug_chunk_count % 20 == 0:
+                            logger.info(
+                                "transcript_debug_raw_chunk",
+                                chunk_index=self._debug_chunk_count,
+                                contains_linebreak=any(ch in text for ch in ("\n", "\r", "\u2028", "\u2029", "\u0085")),
+                                raw_repr=repr(text[:220]),
+                            )
+                    normalized = self.transcript_store.add(text)
+                    if normalized:
+                        if self._debug_transcript and self._debug_chunk_count % 20 == 0:
+                            logger.info(
+                                "transcript_debug_normalized_chunk",
+                                chunk_index=self._debug_chunk_count,
+                                contains_linebreak=any(ch in normalized for ch in ("\n", "\r", "\u2028", "\u2029", "\u0085")),
+                                normalized_repr=repr(normalized[:220]),
+                            )
+                        await self.broadcast({"type": "transcript", "text": normalized, "timestamp": _utc_iso()})
                 await self.broadcast({"type": "status", "data": self.status_payload()})
             except Exception as exc:
                 logger.exception("run_loop_error", error=str(exc))

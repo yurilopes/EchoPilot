@@ -6,12 +6,14 @@ type Props = {
   text: string;
   followState: TranscriptFollowState;
   unreadCount: number;
-  preRef: RefObject<HTMLPreElement | null>;
-  onScroll: (ev: UIEvent<HTMLPreElement>) => void;
+  preRef: RefObject<HTMLDivElement | null>;
+  onScroll: (ev: UIEvent<HTMLDivElement>) => void;
   onJumpToLatest: () => void;
 };
 
 export function LiveTranscriptPane({ text, followState, unreadCount, preRef, onScroll, onJumpToLatest }: Props) {
+  const singleLineText = text.replace(/\s+/g, " ").trim();
+
   return (
     <article className="panel transcript-panel">
       <div className="panel-head">
@@ -20,7 +22,9 @@ export function LiveTranscriptPane({ text, followState, unreadCount, preRef, onS
           {followState === "following" ? "Following" : "Paused"}
         </span>
       </div>
-      <pre ref={preRef} className="transcript-pre" onScroll={onScroll}>{text || "No transcript yet."}</pre>
+      <div ref={preRef} className="transcript-pre" onScroll={onScroll}>
+        <span className="transcript-line">{singleLineText || "No transcript yet."}</span>
+      </div>
       {followState === "paused" ? (
         <div className="row transcript-jump">
           <button className="btn" onClick={onJumpToLatest}><ArrowDown size={14} /> Jump to latest</button>
