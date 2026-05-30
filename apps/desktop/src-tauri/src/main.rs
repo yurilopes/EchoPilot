@@ -59,14 +59,17 @@ fn main() {
             pip: Mutex::new(false),
         })
         .invoke_handler(tauri::generate_handler![toggle_always_on_top, toggle_pip_mode, backend_health])
-        .on_window_event(|event| {
-            if let tauri::WindowEvent::CloseRequested { .. } = event.event() {
-                let state = event.window().state::<BackendState>();
-                if let Ok(mut child) = state.child.lock() {
-                    if let Some(c) = child.as_mut() {
-                        let _ = c.kill();
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                let state = window.state::<BackendState>();
+                match state.child.lock() {
+                    Ok(mut child) => {
+                        if let Some(c) = child.as_mut() {
+                            let _ = c.kill();
+                        }
                     }
-                }
+                    Err(_) => {}
+                };
             }
         })
         .run(tauri::generate_context!())

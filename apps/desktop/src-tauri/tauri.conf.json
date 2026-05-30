@@ -5,7 +5,7 @@
   "identifier": "com.echopilot.realtimesystemtranscriber",
   "build": {
     "frontendDist": "../desktop",
-    "devUrl": "http://localhost:1420"
+    "devUrl": "http://127.0.0.1:5173"
   },
   "app": {
     "windows": [
