@@ -1,4 +1,4 @@
-import type { AsrModelRow } from "./types";
+import type { AsrModelRow, ModelFilterCriteria, SortBy, SortDir } from "./types";
 
 const rank = {
   speed: { "ultra-fast": 6, "very-fast": 5, fast: 4, "medium-fast": 3, medium: 2, slow: 1, unknown: 0 },
@@ -6,17 +6,6 @@ const rank = {
   live: { excellent: 4, "very-good": 3, good: 2, fair: 1, unknown: 0 },
   size: { "very-light": 1, light: 2, medium: 3, heavy: 4, "very-heavy": 5, unknown: 6 },
 } as const;
-
-export type SortBy = "name" | "downloads" | "speed" | "quality" | "live" | "size" | "installed";
-export type SortDir = "asc" | "desc";
-export type ModelFilterCriteria = {
-  live: string[];
-  quality: string[];
-  speed: string[];
-  size: string[];
-  state: string[];
-  installed: Array<"yes" | "no">;
-};
 
 function scoreModel(model: AsrModelRow, sortBy: SortBy): number {
   if (sortBy === "downloads") return model.downloads ?? 0;

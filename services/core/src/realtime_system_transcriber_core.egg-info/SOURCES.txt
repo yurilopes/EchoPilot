@@ -9,6 +9,7 @@ src/realtime_system_transcriber/model_registry.py
 src/realtime_system_transcriber/runtime.py
 src/realtime_system_transcriber/secrets.py
 src/realtime_system_transcriber/settings.py
+src/realtime_system_transcriber/ui_preferences.py
 src/realtime_system_transcriber/telemetry.py
 src/realtime_system_transcriber/transcript_store.py
 src/realtime_system_transcriber_core.egg-info/PKG-INFO
@@ -17,4 +18,7 @@ src/realtime_system_transcriber_core.egg-info/dependency_links.txt
 src/realtime_system_transcriber_core.egg-info/requires.txt
 src/realtime_system_transcriber_core.egg-info/top_level.txt
 tests/test_asr.py
+tests/test_runtime_analysis.py
 tests/test_settings.py
+tests/test_transcript_store.py
+tests/test_ui_preferences.py

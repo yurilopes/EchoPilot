@@ -14,12 +14,25 @@ import {
 } from "./api";
 import { AiReadinessCard } from "./components/AiReadinessCard";
 import { AnalysisPane } from "./components/AnalysisPane";
+import { EchoPilotMark } from "./components/EchoPilotMark";
 import { LiveTranscriptPane } from "./components/LiveTranscriptPane";
 import { ModelRow } from "./components/ModelRow";
 import { RuntimeStatusStrip } from "./components/RuntimeStatusStrip";
 import { SessionControls } from "./components/SessionControls";
-import { filterAndSortModels, type ModelFilterCriteria, type SortBy, type SortDir } from "./modelCatalog";
-import type { AsrModelRow, CatalogResponse, DownloadStateResponse, RuntimeSettings, RuntimeStatus, TabKey, TranscriptFollowState } from "./types";
+import { useUiPreferences } from "./hooks/useUiPreferences";
+import { filterAndSortModels } from "./modelCatalog";
+import type {
+  AsrModelRow,
+  CatalogResponse,
+  DownloadStateResponse,
+  RuntimeSettings,
+  RuntimeStatus,
+  ModelFilterCriteria,
+  SortBy,
+  SortDir,
+  TabKey,
+  TranscriptFollowState,
+} from "./types";
 import { canAnalyzeNow as canAnalyzeNowBase, deriveAiReadiness, deriveSessionState } from "./uiState";
 
 const DEFAULT_SETTINGS: RuntimeSettings = {
@@ -64,7 +77,22 @@ function bytes(value: number | null): string {
 
 export function App() {
   const transcriptDebug = (import.meta.env.VITE_ECHOPILOT_TRANSCRIPT_DEBUG ?? "").toString() === "1";
-  const [tab, setTab] = useState<TabKey>("live");
+  const {
+    activeTab: tab,
+    setActiveTab: setTab,
+    modelFilter,
+    setModelFilter,
+    sortBy,
+    setSortBy,
+    sortDir,
+    setSortDir,
+    modelFilters,
+    setModelFilters,
+    autoApplyAfterDownload,
+    setAutoApplyAfterDownload,
+    reloadPreferences,
+    resetForEngineChange,
+  } = useUiPreferences();
   const [status, setStatus] = useState<RuntimeStatus | null>(null);
   const [settings, setSettings] = useState<RuntimeSettings>(DEFAULT_SETTINGS);
   const [transcript, setTranscript] = useState("");
@@ -76,19 +104,7 @@ export function App() {
   const [backendConnecting, setBackendConnecting] = useState(false);
   const [catalog, setCatalog] = useState<CatalogResponse | null>(null);
   const [downloadState, setDownloadState] = useState<DownloadStateResponse | null>(null);
-  const [modelFilter, setModelFilter] = useState("");
-  const [sortBy, setSortBy] = useState<SortBy>("live");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
-  const [modelFilters, setModelFilters] = useState<ModelFilterCriteria>({
-    live: [],
-    quality: [],
-    speed: [],
-    size: [],
-    state: [],
-    installed: [],
-  });
   const [pendingApply, setPendingApply] = useState<{ engine: "whisper" | "parakeet"; modelId: string } | null>(null);
-  const [autoApplyAfterDownload, setAutoApplyAfterDownload] = useState(false);
   const [warmupInfo, setWarmupInfo] = useState("");
   const [now, setNow] = useState(Date.now());
   const [inFlight, setInFlight] = useState<"none" | "starting" | "stopping">("none");
@@ -166,6 +182,7 @@ export function App() {
             ? normalizedBase
             : { ...normalizedBase, llm_model: DEFAULT_SETTINGS.llm_model };
           setSettings(normalized);
+          prevEngineRef.current = normalized.asr_engine;
           if (normalized.llm_model !== loaded.llm_model) {
             void apiPutSettings(normalized);
           }
@@ -189,7 +206,7 @@ export function App() {
             return;
           }
           setError(String(e));
-        });
+      });
       apiGet<{ text: string }>("/transcript")
         .then((x) => setTranscript(normalizeTranscriptChunk(String(x.text ?? ""))))
         .catch(() => undefined);
@@ -226,6 +243,7 @@ export function App() {
       ws = new WebSocket(socketUrl());
       ws.onopen = () => {
         setBackendConnecting(false);
+        void reloadPreferences();
         if (connectingBannerTimer) clearTimeout(connectingBannerTimer);
       };
       ws.onmessage = (event) => {
@@ -298,7 +316,7 @@ export function App() {
       if (connectingBannerTimer) clearTimeout(connectingBannerTimer);
       ws?.close();
     };
-  }, [autoApplyAfterDownload, pendingApply]);
+  }, [autoApplyAfterDownload, pendingApply, reloadPreferences]);
 
   useEffect(() => {
     if (followState !== "following") return;
@@ -342,12 +360,11 @@ export function App() {
     if (!initializedRef.current) return;
     if (prevEngineRef.current === settings.asr_engine) return;
     prevEngineRef.current = settings.asr_engine;
-    setModelFilters({ live: [], quality: [], speed: [], size: [], state: [], installed: [] });
-    setModelFilter("");
+    resetForEngineChange();
     void safe(async () => {
       await refreshCatalog();
     });
-  }, [settings.asr_engine]);
+  }, [resetForEngineChange, settings.asr_engine]);
 
   const elapsedSeconds = (startedAt: number | null | undefined) => (startedAt ? Math.max(0, Math.floor(now / 1000 - startedAt)) : 0);
   const queueAlert =
@@ -469,7 +486,7 @@ export function App() {
       <header className="hero sticky-header">
         <div className="hero-brand">
           <div className="hero-mark" aria-hidden="true">
-            <Mic size={28} />
+            <EchoPilotMark size={60} />
           </div>
           <div className="hero-copy">
             <h1 className="hero-title">EchoPilot</h1>
@@ -606,12 +623,9 @@ export function App() {
                       const engine = e.target.value as "whisper" | "parakeet";
                       const nextSettings = { ...settings, asr_engine: engine };
                       setSettings(nextSettings);
-                      setModelFilters({ live: [], quality: [], speed: [], size: [], state: [], installed: [] });
-                      setModelFilter("");
+                      resetForEngineChange();
                       void safe(async () => {
                         await apiPutSettings(nextSettings);
-                      });
-                      void safe(async () => {
                         await refreshCatalog();
                       });
                     }}
@@ -702,7 +716,7 @@ export function App() {
                   <label className="inline-check"><input type="checkbox" checked={autoApplyAfterDownload} onChange={(e) => setAutoApplyAfterDownload(e.target.checked)} />Auto-apply after download</label>
                   <button className="btn btn-quiet" onClick={() => safe(refreshCatalog)}>Refresh</button>
                   <button className="btn btn-quiet" onClick={() => safe(warmupWithRetry)}>Warmup</button>
-                  <button className="btn btn-quiet" onClick={() => setModelFilters({ live: [], quality: [], speed: [], size: [], state: [], installed: [] })}>Clear filters</button>
+                  <button className="btn btn-quiet" onClick={resetForEngineChange}>Clear filters</button>
                 </div>
               </div>
               {warmupInfo ? <div className="muted" style={{ marginBottom: 10 }}>{warmupInfo}</div> : null}
@@ -712,7 +726,7 @@ export function App() {
                   <div className="model-empty">
                     <strong>No models match current filters.</strong>
                     <span className="muted">Try clearing filters or switching engine.</span>
-                    <button className="btn btn-quiet" onClick={() => setModelFilters({ live: [], quality: [], speed: [], size: [], state: [], installed: [] })}>Clear filters</button>
+                    <button className="btn btn-quiet" onClick={resetForEngineChange}>Clear filters</button>
                   </div>
                 ) : null}
                 {activeModels.slice(0, 200).map((model) => {

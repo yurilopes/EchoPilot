@@ -2,6 +2,24 @@ export type TabKey = "live" | "ai" | "models" | "settings";
 export type SessionUiState = "idle" | "starting" | "running" | "stopping" | "error";
 export type AiReadinessState = "ready" | "missing_key" | "invalid_config" | "disabled";
 export type TranscriptFollowState = "following" | "paused";
+export type SortBy = "name" | "downloads" | "speed" | "quality" | "live" | "size" | "installed";
+export type SortDir = "asc" | "desc";
+export type ModelFilterCriteria = {
+  live: string[];
+  quality: string[];
+  speed: string[];
+  size: string[];
+  state: string[];
+  installed: Array<"yes" | "no">;
+};
+export type UiPreferences = {
+  active_tab: TabKey;
+  model_filter: string;
+  sort_by: SortBy;
+  sort_dir: SortDir;
+  model_filters: ModelFilterCriteria;
+  auto_apply_after_download: boolean;
+};
 
 export type RuntimeStatus = {
   running: boolean;

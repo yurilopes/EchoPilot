@@ -1,13 +1,16 @@
 <svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="bg" x1="12" y1="10" x2="52" y2="56" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#1B5B3B"/>
-      <stop offset="1" stop-color="#123524"/>
+    <linearGradient id="echopilot-favicon-ring" x1="11" y1="10" x2="53" y2="53" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1B5B3B"/>
+      <stop offset="0.46" stop-color="#B59B6A"/>
+      <stop offset="1" stop-color="#D8E4DC"/>
     </linearGradient>
   </defs>
-  <rect x="4" y="4" width="56" height="56" rx="16" fill="url(#bg)"/>
-  <path d="M32 18c-2.761 0-5 2.239-5 5v8c0 2.761 2.239 5 5 5s5-2.239 5-5v-8c0-2.761-2.239-5-5-5Z" stroke="#F3F7F1" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M24 31c0 4.418 3.582 8 8 8s8-3.582 8-8" stroke="#F3F7F1" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M32 39v5" stroke="#F3F7F1" stroke-width="2.5" stroke-linecap="round"/>
-  <path d="M27 48h10" stroke="#F3F7F1" stroke-width="2.5" stroke-linecap="round"/>
+  <circle cx="32" cy="32" r="22.5" stroke="url(#echopilot-favicon-ring)" stroke-width="5.4"/>
+  <circle cx="32" cy="32" r="17.9" fill="#F3F7F1" opacity="0.98"/>
+  <g transform="translate(20 20.5)">
+    <path d="M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7a9 9 0 0 1 18 0v7a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3" stroke="#123524" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <path d="M23.4 17.8l0.95 2.25 2.25 0.95-2.25 0.95-0.95 2.25-0.95-2.25-2.25-0.95 2.25-0.95 0.95-2.25Z" fill="none" stroke="#55734D" stroke-width="1.1" stroke-linejoin="round"/>
+  <path d="M44.5 22.0l1.35 3.05 3.05 1.35-3.05 1.35-1.35 3.05-1.35-3.05-3.05-1.35 3.05-1.35 1.35-3.05Z" fill="none" stroke="#55734D" stroke-width="1.1" stroke-linejoin="round"/>
 </svg>

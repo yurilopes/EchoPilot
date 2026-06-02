@@ -1,4 +1,5 @@
 import type { RuntimeSettings } from "./types";
+import type { UiPreferences } from "./types";
 
 const API = "http://127.0.0.1:8765";
 
@@ -43,6 +44,24 @@ export async function apiPutSettings(settings: RuntimeSettings): Promise<void> {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(settings)
+    });
+  } catch (error) {
+    throw normalizeFetchError(error);
+  }
+  if (!response.ok) throw new Error(await response.text());
+}
+
+export async function apiGetUiPreferences(): Promise<UiPreferences> {
+  return apiGet<UiPreferences>("/ui/preferences");
+}
+
+export async function apiPutUiPreferences(preferences: UiPreferences): Promise<void> {
+  let response: Response;
+  try {
+    response = await fetch(`${API}/ui/preferences`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(preferences)
     });
   } catch (error) {
     throw normalizeFetchError(error);

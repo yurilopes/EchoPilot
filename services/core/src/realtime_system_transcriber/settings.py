@@ -26,6 +26,7 @@ class AppSettings(BaseSettings):
     port: int = 8765
     log_level: str = "INFO"
     settings_path: Path = Path("runtime/settings.json")
+    ui_preferences_path: Path = Path("runtime/ui_preferences.json")
     secret_service_name: str = "echopilot"
     secret_username: str = "llm_api_key"
 

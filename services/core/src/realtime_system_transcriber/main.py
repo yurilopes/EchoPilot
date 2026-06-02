@@ -13,10 +13,12 @@ from realtime_system_transcriber.runtime import RuntimeController
 from realtime_system_transcriber.asr_engine import AsrEngine
 from realtime_system_transcriber.secrets import SecretStore
 from realtime_system_transcriber.settings import AppSettings, RuntimeSettings, ensure_runtime_settings, save_runtime_settings
+from realtime_system_transcriber.ui_preferences import UiPreferences, ensure_ui_preferences, save_ui_preferences
 from realtime_system_transcriber.telemetry import configure_logging
 
 app_settings = AppSettings()
 runtime_settings = ensure_runtime_settings(app_settings.settings_path)
+ui_preferences = ensure_ui_preferences(app_settings.ui_preferences_path)
 if runtime_settings.asr_engine == "whisper" and "/" in runtime_settings.model_id:
     model_lower = runtime_settings.model_id.lower()
     compatible = ("faster-whisper" in model_lower) or ("ctranslate2" in model_lower) or model_lower.startswith("systran/")
@@ -112,12 +114,26 @@ async def get_settings() -> dict:
     return runtime_controller.runtime_settings.model_dump()
 
 
+@app.get("/ui/preferences")
+async def get_ui_preferences() -> dict:
+    return ui_preferences.model_dump()
+
+
 @app.put("/settings")
 async def update_settings(payload: RuntimeSettingsUpdate) -> dict:
     new_settings = RuntimeSettings(**payload.model_dump())
     await runtime_controller.apply_runtime_settings(new_settings)
     save_runtime_settings(app_settings.settings_path, new_settings)
     return {"ok": True, "settings": new_settings.model_dump()}
+
+
+@app.put("/ui/preferences")
+async def update_ui_preferences(payload: UiPreferences) -> dict:
+    global ui_preferences
+    new_preferences = UiPreferences(**payload.model_dump())
+    ui_preferences = new_preferences
+    save_ui_preferences(app_settings.ui_preferences_path, new_preferences)
+    return {"ok": True, "preferences": new_preferences.model_dump()}
 
 
 @app.get("/asr/catalog")
