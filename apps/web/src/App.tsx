@@ -20,7 +20,7 @@ import { RuntimeStatusStrip } from "./components/RuntimeStatusStrip";
 import { SessionControls } from "./components/SessionControls";
 import { filterAndSortModels, type ModelFilterCriteria, type SortBy, type SortDir } from "./modelCatalog";
 import type { AsrModelRow, CatalogResponse, DownloadStateResponse, RuntimeSettings, RuntimeStatus, TabKey, TranscriptFollowState } from "./types";
-import { canAnalyzeNow, deriveAiReadiness, deriveSessionState } from "./uiState";
+import { canAnalyzeNow as canAnalyzeNowBase, deriveAiReadiness, deriveSessionState } from "./uiState";
 
 const DEFAULT_SETTINGS: RuntimeSettings = {
   language: "en",
@@ -95,6 +95,7 @@ export function App() {
   const [followState, setFollowState] = useState<TranscriptFollowState>("following");
   const [unreadChunks, setUnreadChunks] = useState(0);
   const [analysisUpdatedAt, setAnalysisUpdatedAt] = useState<number | null>(null);
+  const [manualAnalysisInFlight, setManualAnalysisInFlight] = useState(false);
   const [aiKeyConfigured, setAiKeyConfigured] = useState(false);
   const [optimisticRunTarget, setOptimisticRunTarget] = useState<boolean | null>(null);
   const [optimisticRunUntil, setOptimisticRunUntil] = useState<number>(0);
@@ -120,21 +121,23 @@ export function App() {
   };
 
   const aiReadiness = deriveAiReadiness(settings, status, aiKeyConfigured);
+  const aiModelLabel = settings.llm_model.toLowerCase().includes("pro") ? "Pro" : "Flash";
   const hasOptimisticRun = optimisticRunTarget !== null && nowMs < optimisticRunUntil;
   const effectiveRunning = hasOptimisticRun ? optimisticRunTarget : (status?.running ?? false);
   const sessionState = deriveSessionState({ ...(status ?? ({} as RuntimeStatus)), running: effectiveRunning }, inFlight, !!error);
-  const analyzeEnabled = canAnalyzeNow(aiReadiness.state, transcript);
+  const analysisBusy = manualAnalysisInFlight || !!status?.analysis_in_progress;
+  const canAnalyzeNow = canAnalyzeNowBase(aiReadiness.state, transcript) && !analysisBusy;
   const displayedTranscript = normalizeTranscriptChunk(transcript);
-  const analysisStateLabel =
+  const analysisState =
     aiReadiness.state !== "ready"
-      ? "Analysis unavailable"
-      : status?.analysis_in_progress
-        ? "Analysis in progress"
-        : !settings.auto_analysis_enabled
-          ? "Automatic analysis disabled"
-          : status?.transcript_signature && status?.last_analysis_signature && status.transcript_signature === status.last_analysis_signature && transcript.trim().length > 0
-            ? "Analysis up to date"
-            : "Waiting for new transcript";
+      ? { label: "Unavailable", kind: "unavailable" as const }
+      : analysisBusy
+        ? { label: "In progress", kind: "in-progress" as const }
+        : transcript.trim().length === 0
+          ? { label: "No transcript", kind: "waiting" as const }
+          : status?.transcript_signature && status?.last_analysis_signature && status.transcript_signature === status.last_analysis_signature
+            ? { label: "Up to date", kind: "up-to-date" as const }
+            : { label: "Ready", kind: "ready" as const };
 
   useEffect(() => {
     settingsRef.current = settings;
@@ -347,7 +350,6 @@ export function App() {
   }, [settings.asr_engine]);
 
   const elapsedSeconds = (startedAt: number | null | undefined) => (startedAt ? Math.max(0, Math.floor(now / 1000 - startedAt)) : 0);
-  const analysisUpdatedLabel = analysisUpdatedAt ? `Updated ${Math.max(0, Math.floor((Date.now() - analysisUpdatedAt) / 1000))}s ago` : "No analysis updates yet";
   const queueAlert =
     (downloadState?.failed_count ?? 0) > 0
       ? "One or more downloads failed. Use Retry on the affected model."
@@ -526,17 +528,26 @@ export function App() {
                 }}
               />
               <AnalysisPane
-                analysisText={analysis || (settings.ai_enabled ? "No analysis yet." : "AI analysis is disabled in AI tab.")}
+                analysisText={analysis}
+                hasAnalysis={analysis.trim().length > 0}
+                emptyMessage={settings.ai_enabled ? "Run an analysis to generate AI insights from your transcript." : "AI analysis is disabled in the AI tab."}
                 readinessState={aiReadiness.state}
                 readinessMessage={aiReadiness.message}
-                updatedLabel={analysisUpdatedLabel}
-                analysisStateLabel={analysisStateLabel}
-                canAnalyzeNow={analyzeEnabled}
+                aiModelLabel={aiModelLabel}
+                analysisStateLabel={analysisState.label}
+                analysisStateKind={analysisState.kind}
+                canAnalyzeNow={canAnalyzeNow}
+                analysisBusy={analysisBusy}
                 autoAnalysisEnabled={settings.auto_analysis_enabled}
                 onToggleAutoAnalysis={(checked) => setSettings({ ...settings, auto_analysis_enabled: checked })}
                 onAnalyzeNow={() => safe(async () => {
-                  setAnalysis((await apiPost<{ analysis: string }>("/analysis/now")).analysis);
-                  setAnalysisUpdatedAt(Date.now());
+                  setManualAnalysisInFlight(true);
+                  try {
+                    setAnalysis((await apiPost<{ analysis: string }>("/analysis/now")).analysis);
+                    setAnalysisUpdatedAt(Date.now());
+                  } finally {
+                    setManualAnalysisInFlight(false);
+                  }
                 })}
                 onOpenAiTab={() => setTab("ai")}
               />

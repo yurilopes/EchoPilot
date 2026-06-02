@@ -178,14 +178,13 @@ textarea { min-height: 100px; resize: vertical; }
   min-height: 82px;
   box-shadow: 0 10px 18px rgba(18, 53, 36, 0.04);
 }
-.status-chip-priority { background: #f5f9f6; border-color: #d6e3d8; }
-.status-chip span { display: block; font-size: 11px; color: var(--ink-soft); }
-.status-chip strong { display: block; font-size: 13px; }
+.status-chip-content span { display: block; font-size: 11px; color: var(--ink-soft); }
+.status-chip-content strong { display: block; font-size: 13px; }
 .status-chip-icon {
   width: 46px;
   height: 46px;
   border-radius: 999px;
-  display: flex;
+  display: grid;
   align-items: center;
   justify-content: center;
   flex: none;
@@ -194,12 +193,11 @@ textarea { min-height: 100px; resize: vertical; }
 .status-chip-icon-glyph {
   width: 18px;
   height: 18px;
-  display: flex;
+  display: grid;
   align-items: center;
   justify-content: center;
   line-height: 0;
   flex: none;
-  transform: translate(1px, 2px);
 }
 .status-chip-icon-glyph svg {
   display: block;
@@ -213,7 +211,7 @@ textarea { min-height: 100px; resize: vertical; }
 .status-chip-icon-device { background: #f8efe2; color: #a96b1b; }
 .status-chip-icon-engine { background: #eef4eb; color: #4d6d57; }
 .status-chip-icon-cuda { background: #edf3ee; color: #254d36; }
-.status-chip > div { min-width: 0; }
+.status-chip-content { min-width: 0; }
 .live-grid { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; min-height: 0; }
 .live-fill { height: 100%; min-height: 0; }
 .workspace-shell {
@@ -307,6 +305,13 @@ textarea { min-height: 100px; resize: vertical; }
   padding: 30px 24px;
   color: var(--ink-soft);
 }
+.analysis-empty-ai {
+  flex: 1;
+  min-height: 290px;
+  background: #fffdf9;
+  border: 1px solid #f0e5d5;
+  border-radius: 14px;
+}
 .transcript-empty-icon,
 .analysis-empty-icon {
   width: 62px;
@@ -327,9 +332,23 @@ textarea { min-height: 100px; resize: vertical; }
 .analysis-toggle {
   color: var(--ink-soft);
 }
-.analysis-state-label {
+.analysis-state-badge {
   margin-left: auto;
   white-space: nowrap;
+}
+.analysis-state-in-progress {
+  background: #dfe9e0;
+  border-color: #8fa79a;
+  color: #143928;
+  font-weight: 700;
+}
+.analysis-state-ready,
+.analysis-state-waiting,
+.analysis-state-up-to-date,
+.analysis-state-unavailable {
+  background: #f4f7f4;
+  border-color: #d7e2d9;
+  color: #345542;
 }
 .analysis-results-shell {
   border: 1px dashed #dfd4c3;

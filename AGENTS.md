@@ -12,6 +12,10 @@
 - Do not hardcode credentials.
 - All repository artifacts must be written in English, including `README.md` and every `.md` documentation file.
 - Keep source code and `.md` files near 300 lines maximum. Small overflow is acceptable when splitting would hurt readability, but prefer modularization before files grow much beyond this threshold.
+- For UI changes, validate with browser screenshots or snapshots after the code change. Treat visual alignment as an optical problem, not only a box-model problem.
+- Prefer removing temporary screenshots and other generated artifacts after use. Do not leave ad hoc image files in the repository root.
+- When a label reflects a system value, prefer the raw system text unless there is an explicit product rule to format it. Do not normalize names, device labels, or model IDs by default.
+- Preserve persistence and auto-save behavior for user-facing settings unless the user explicitly asks to change it.
 
 ## Architecture Snapshot
 - `services/core`: Python FastAPI service with WASAPI loopback, ASR, transcript buffer, and LLM integration.

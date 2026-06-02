@@ -3,11 +3,15 @@ import type { AiReadinessState } from "../types";
 
 type Props = {
   analysisText: string;
+  hasAnalysis: boolean;
+  emptyMessage: string;
   readinessState: AiReadinessState;
   readinessMessage: string;
-  updatedLabel: string;
+  aiModelLabel: string;
   analysisStateLabel: string;
+  analysisStateKind: "unavailable" | "ready" | "waiting" | "up-to-date" | "in-progress";
   canAnalyzeNow: boolean;
+  analysisBusy: boolean;
   autoAnalysisEnabled: boolean;
   onToggleAutoAnalysis: (checked: boolean) => void;
   onAnalyzeNow: () => void;
@@ -16,11 +20,15 @@ type Props = {
 
 export function AnalysisPane({
   analysisText,
+  hasAnalysis,
+  emptyMessage,
   readinessState,
   readinessMessage,
-  updatedLabel,
+  aiModelLabel,
   analysisStateLabel,
+  analysisStateKind,
   canAnalyzeNow,
+  analysisBusy,
   autoAnalysisEnabled,
   onToggleAutoAnalysis,
   onAnalyzeNow,
@@ -28,7 +36,7 @@ export function AnalysisPane({
 }: Props) {
   const readinessLabel =
     readinessState === "ready"
-      ? "Configured"
+      ? `Configured (${aiModelLabel})`
       : readinessState === "disabled"
         ? "Disabled"
         : readinessState === "missing_key"
@@ -44,8 +52,9 @@ export function AnalysisPane({
         </span>
       </div>
       <div className="analysis-actions">
-        <button className="btn primary" onClick={onAnalyzeNow} disabled={!canAnalyzeNow}>
-          <Sparkles size={16} /> Analyse Now
+        <button className="btn primary" onClick={onAnalyzeNow} disabled={!canAnalyzeNow} aria-busy={analysisBusy}>
+          {analysisBusy ? <Sparkles size={16} className="spin" /> : <Sparkles size={16} />}
+          {analysisBusy ? "Analysing..." : "Analyse Now"}
         </button>
         <label className="inline-check analysis-toggle">
           <input
@@ -55,21 +64,23 @@ export function AnalysisPane({
           />
           Automatic analysis
         </label>
-        <span className="muted analysis-state-label">{analysisStateLabel}</span>
+        <span className={`badge analysis-state-badge analysis-state-${analysisStateKind}`}>
+          {analysisStateLabel}
+        </span>
       </div>
-      <div className="analysis-results-shell">
-        {analysisText ? (
+      {hasAnalysis ? (
+        <div className="analysis-results-shell">
           <pre className="analysis-pre">{analysisText}</pre>
-        ) : (
-          <div className="analysis-empty">
-            <div className="analysis-empty-icon">
-              <Sparkles size={28} />
-            </div>
-            <strong>No analysis yet.</strong>
-            <span className="muted">Run an analysis to generate AI insights from your transcript.</span>
+        </div>
+      ) : (
+        <div className="analysis-empty analysis-empty-ai">
+          <div className="analysis-empty-icon">
+            <Sparkles size={28} />
           </div>
-        )}
-      </div>
+          <strong>No analysis yet.</strong>
+          <span className="muted">{emptyMessage}</span>
+        </div>
+      )}
       {readinessState !== "ready" ? (
         <div className="row" style={{ marginTop: 8 }}>
           <span className="muted">{readinessMessage}</span>
