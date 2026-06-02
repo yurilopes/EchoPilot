@@ -62,6 +62,22 @@ class RuntimeController:
             self._analysis_task.cancel()
         logger.info("runtime_stopped")
 
+    async def apply_runtime_settings(self, runtime_settings: RuntimeSettings) -> None:
+        previous_interval = self.runtime_settings.analysis_interval_seconds
+        self.runtime_settings = runtime_settings
+        self.capture.block_seconds = runtime_settings.chunk_seconds
+        self.capture.block_size = int(self.capture.sample_rate * runtime_settings.chunk_seconds)
+
+        if not self.state.running:
+            return
+
+        if previous_interval != self.runtime_settings.analysis_interval_seconds and self._analysis_task:
+            self._analysis_task.cancel()
+            self._analysis_task = None
+
+        if self.runtime_settings.analysis_interval_seconds > 0 and self._analysis_task is None:
+            self._analysis_task = asyncio.create_task(self._analysis_loop(), name="analysis-loop")
+
     async def _run_loop(self) -> None:
         while self.state.running:
             try:
@@ -95,9 +111,15 @@ class RuntimeController:
 
     async def _analysis_loop(self) -> None:
         while self.state.running:
-            await asyncio.sleep(self.runtime_settings.analysis_interval_seconds)
+            interval = max(1, int(self.runtime_settings.analysis_interval_seconds))
+            await asyncio.sleep(interval)
             if self.state.running:
-                await self.analyze_now()
+                try:
+                    await self.analyze_now()
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    logger.warning("analysis_loop_error", error=str(exc))
 
     async def analyze_now(self) -> str:
         api_key = self.secret_store.get_api_key()

@@ -15,7 +15,7 @@ class RuntimeSettings(BaseModel):
     chunk_seconds: float = 2.0
     analysis_interval_seconds: int = 0
     base_url: str = "https://api.deepseek.com"
-    llm_model: str = "deepseek-chat"
+    llm_model: str = "deepseek-v4-flash"
     prompt: str = "Summarize key points and action items from this transcript."
 
 

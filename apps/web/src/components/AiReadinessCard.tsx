@@ -8,7 +8,7 @@ type Props = {
 
 export function AiReadinessCard({ readinessState, readinessMessage, statusLabel }: Props) {
   return (
-    <div className="selected-model" style={{ marginTop: 10 }}>
+    <div className="ai-readiness-card" style={{ marginTop: 10 }}>
       <span className={`badge ${readinessState === "ready" ? "badge-selected" : ""}`}>{statusLabel}</span>
       <span className="muted">{readinessMessage}</span>
     </div>

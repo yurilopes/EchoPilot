@@ -25,6 +25,9 @@ export function deriveAiReadiness(
   if (llmStatus.includes("missing") || llmStatus.includes("key")) {
     return { state: "missing_key", message: "API key is not configured." };
   }
+  if ((settings.analysis_interval_seconds ?? 0) <= 0) {
+    return { state: "ready", message: "AI is configured and ready. Periodic analysis is disabled until Periodic Analysis (s) is greater than 0." };
+  }
   return { state: "ready", message: "AI is configured and ready." };
 }
 

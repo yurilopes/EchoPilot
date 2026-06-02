@@ -11,6 +11,16 @@ class SecretStore:
     def get_api_key(self) -> str | None:
         return keyring.get_password(self.service_name, self.username)
 
+    def get_api_key_hint(self) -> str | None:
+        value = (self.get_api_key() or "").strip()
+        if not value:
+            return None
+        if len(value) <= 5:
+            return "***"
+        prefix = value[:3]
+        suffix = value[-2:]
+        return f"{prefix}***{suffix}"
+
     def set_api_key(self, value: str) -> None:
         keyring.set_password(self.service_name, self.username, value)
 

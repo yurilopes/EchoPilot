@@ -29,9 +29,14 @@ const DEFAULT_SETTINGS: RuntimeSettings = {
   chunk_seconds: 2,
   analysis_interval_seconds: 0,
   base_url: "https://api.deepseek.com",
-  llm_model: "deepseek-chat",
+  llm_model: "deepseek-v4-flash",
   prompt: "Summarize key points and action items from this transcript.",
 };
+
+const AI_MODEL_OPTIONS = [
+  { value: "deepseek-v4-flash", label: "DeepSeek V4 Flash" },
+  { value: "deepseek-v4-pro", label: "DeepSeek V4 Pro" },
+];
 
 function bytes(value: number | null): string {
   if (!value) return "-";
@@ -53,6 +58,8 @@ export function App() {
   const [transcript, setTranscript] = useState("");
   const [analysis, setAnalysis] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [apiKeyHint, setApiKeyHint] = useState("");
+  const [apiKeyEdited, setApiKeyEdited] = useState(false);
   const [error, setError] = useState("");
   const [backendConnecting, setBackendConnecting] = useState(false);
   const [catalog, setCatalog] = useState<CatalogResponse | null>(null);
@@ -83,6 +90,8 @@ export function App() {
   const followStateRef = useRef<TranscriptFollowState>("following");
   const initializedRef = useRef(false);
   const prevEngineRef = useRef<"whisper" | "parakeet">(DEFAULT_SETTINGS.asr_engine);
+  const settingsRef = useRef(settings);
+  const aiSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const nowMs = Date.now();
 
   const refreshCatalog = async () => setCatalog(await apiGet<CatalogResponse>("/asr/catalog"));
@@ -110,10 +119,35 @@ export function App() {
   }, [followState]);
 
   useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
+
+  useEffect(() => {
+    if (!initializedRef.current) return;
+    if (aiSaveTimerRef.current) clearTimeout(aiSaveTimerRef.current);
+    aiSaveTimerRef.current = setTimeout(() => {
+      void safe(async () => {
+        await apiPutSettings(settings);
+      });
+    }, 350);
+    return () => {
+      if (aiSaveTimerRef.current) clearTimeout(aiSaveTimerRef.current);
+    };
+  }, [settings]);
+
+  useEffect(() => {
     if (!initializedRef.current) {
       initializedRef.current = true;
       apiGet<RuntimeSettings>("/settings")
-        .then(setSettings)
+        .then((loaded) => {
+          const normalized = AI_MODEL_OPTIONS.some((opt) => opt.value === loaded.llm_model)
+            ? loaded
+            : { ...loaded, llm_model: DEFAULT_SETTINGS.llm_model };
+          setSettings(normalized);
+          if (normalized.llm_model !== loaded.llm_model) {
+            void apiPutSettings(normalized);
+          }
+        })
         .catch((e) => {
           if (String(e).toLowerCase().includes("core api is temporarily unavailable")) {
             setBackendConnecting(true);
@@ -145,9 +179,19 @@ export function App() {
         // Catalog failures should not interrupt live transcription UX.
         console.warn("catalog_refresh_failed", e);
       });
-      apiGet<{ configured: boolean }>("/llm/credentials/status")
-        .then((x) => setAiKeyConfigured(!!x.configured))
-        .catch(() => setAiKeyConfigured(false));
+      apiGet<{ configured: boolean; masked?: string | null }>("/llm/credentials/status")
+        .then((x) => {
+          setAiKeyConfigured(!!x.configured);
+          setApiKeyHint((x.masked ?? "").trim());
+          setApiKey("");
+          setApiKeyEdited(false);
+        })
+        .catch(() => {
+          setAiKeyConfigured(false);
+          setApiKeyHint("");
+          setApiKey("");
+          setApiKeyEdited(false);
+        });
     }
 
     let stopped = false;
@@ -202,7 +246,7 @@ export function App() {
         if (autoApplyAfterDownload && pendingApply) {
           const doneTask = state.tasks.find((t) => t.engine === pendingApply.engine && t.model_id === pendingApply.modelId && t.status === "done");
           if (doneTask) {
-            const nextSettings = { ...settings, asr_engine: pendingApply.engine, model_id: pendingApply.modelId };
+            const nextSettings = { ...settingsRef.current, asr_engine: pendingApply.engine, model_id: pendingApply.modelId };
             setSettings(nextSettings);
             await apiPutSettings(nextSettings);
             await apiApplyModel(pendingApply.engine, pendingApply.modelId, true);
@@ -224,7 +268,7 @@ export function App() {
       if (connectingBannerTimer) clearTimeout(connectingBannerTimer);
       ws?.close();
     };
-  }, [autoApplyAfterDownload, pendingApply, settings]);
+  }, [autoApplyAfterDownload, pendingApply]);
 
   useEffect(() => {
     if (followState !== "following") return;
@@ -456,11 +500,18 @@ export function App() {
           <div className="form-grid" style={{ marginTop: 12 }}>
             <label>Enable AI analysis<select value={settings.ai_enabled ? "yes" : "no"} onChange={(e) => setSettings({ ...settings, ai_enabled: e.target.value === "yes" })}><option value="yes">Enabled</option><option value="no">Disabled</option></select></label>
             <label>Base URL<input value={settings.base_url} onChange={(e) => setSettings({ ...settings, base_url: e.target.value })} /></label>
-            <label>Model Name<input value={settings.llm_model} onChange={(e) => setSettings({ ...settings, llm_model: e.target.value })} /></label>
-            <label>Periodic Analysis (s)<input type="number" min={0} max={600} value={settings.analysis_interval_seconds} onChange={(e) => setSettings({ ...settings, analysis_interval_seconds: Number(e.target.value) })} /><span className="muted">Lower values increase API usage and UI churn.</span></label>
+            <label>Model Name
+              <select value={settings.llm_model} onChange={(e) => setSettings({ ...settings, llm_model: e.target.value })}>
+                {AI_MODEL_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </label>
+            <label>Periodic Analysis (s)<input type="number" min={0} max={600} value={settings.analysis_interval_seconds} onChange={(e) => setSettings({ ...settings, analysis_interval_seconds: Number(e.target.value) })} /></label>
             <label className="wide">Analysis Prompt<textarea value={settings.prompt} onChange={(e) => setSettings({ ...settings, prompt: e.target.value })} /></label>
-            <label className="wide">API Key (stored in Windows Credential Manager)<input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} /></label>
-            <div className="row wide"><button className="btn" onClick={() => safe(async () => { await apiPutSettings(settings); await refreshCatalog(); })}>Save AI Settings</button><button className="btn" onClick={() => safe(async () => { await apiPost("/llm/credentials", { api_key: apiKey }); setApiKey(""); setAiKeyConfigured(true); })}>Save API Key</button></div>
+            <label className="wide">API Key (stored in Windows Credential Manager)<input type="text" value={apiKeyEdited ? apiKey : (apiKey || apiKeyHint)} onFocus={() => { if (apiKeyHint && !apiKeyEdited) setApiKeyEdited(true); }} onChange={(e) => { if (!apiKeyEdited) setApiKeyEdited(true); setApiKey(e.target.value); }} /></label>
+            <div className="wide muted ai-help-line">Lower periodic values increase API usage and UI churn.</div>
+            <div className="row wide"><button className="btn" onClick={() => safe(async () => { await apiPutSettings(settings); await refreshCatalog(); })}>Save AI Settings</button><button className="btn" onClick={() => safe(async () => { const nextApiKey = apiKey.trim(); if (!nextApiKey) return; await apiPost("/llm/credentials", { api_key: nextApiKey }); const credentials = await apiGet<{ configured: boolean; masked?: string | null }>("/llm/credentials/status"); setAiKeyConfigured(!!credentials.configured); setApiKeyHint((credentials.masked ?? "").trim()); setApiKey(""); setApiKeyEdited(false); })}>Save API Key</button></div>
           </div>
         </section>
       ) : null}

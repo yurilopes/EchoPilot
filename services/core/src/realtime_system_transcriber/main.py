@@ -46,7 +46,7 @@ class RuntimeSettingsUpdate(BaseModel):
     chunk_seconds: float = Field(default=2.0)
     analysis_interval_seconds: int = Field(default=0)
     base_url: str = Field(default="https://api.deepseek.com")
-    llm_model: str = Field(default="deepseek-chat")
+    llm_model: str = Field(default="deepseek-v4-flash")
     prompt: str = Field(default="Summarize key points and action items from this transcript.")
 
 
@@ -111,7 +111,7 @@ async def get_settings() -> dict:
 @app.put("/settings")
 async def update_settings(payload: RuntimeSettingsUpdate) -> dict:
     new_settings = RuntimeSettings(**payload.model_dump())
-    runtime_controller.runtime_settings = new_settings
+    await runtime_controller.apply_runtime_settings(new_settings)
     save_runtime_settings(app_settings.settings_path, new_settings)
     return {"ok": True, "settings": new_settings.model_dump()}
 
@@ -273,7 +273,10 @@ async def clear_api_key() -> dict:
 @app.get("/llm/credentials/status")
 async def llm_credentials_status() -> dict:
     api_key = secret_store.get_api_key()
-    return {"configured": bool(api_key and api_key.strip())}
+    return {
+        "configured": bool(api_key and api_key.strip()),
+        "masked": secret_store.get_api_key_hint(),
+    }
 
 
 @app.post("/transcription/start")

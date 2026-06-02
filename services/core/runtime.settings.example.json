@@ -6,7 +6,7 @@
   "chunk_seconds": 2.0,
   "analysis_interval_seconds": 0,
   "base_url": "https://api.deepseek.com",
-  "llm_model": "deepseek-chat",
+  "llm_model": "deepseek-v4-flash",
   "prompt": "Summarize key points and action items from this transcript."
 }
 
