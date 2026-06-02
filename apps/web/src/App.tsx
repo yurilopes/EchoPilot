@@ -1,5 +1,6 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import type { UIEvent } from "react";
+import { Boxes, Mic, Settings2, Sparkles } from "lucide-react";
 import {
   apiApplyModel,
   apiCancelDownload,
@@ -26,8 +27,10 @@ const DEFAULT_SETTINGS: RuntimeSettings = {
   asr_engine: "whisper",
   model_id: "base",
   ai_enabled: true,
+  auto_analysis_enabled: true,
   chunk_seconds: 2,
-  analysis_interval_seconds: 0,
+  analysis_interval_seconds: 2,
+  clear_transcript_on_start: false,
   base_url: "https://api.deepseek.com",
   llm_model: "deepseek-v4-flash",
   prompt: "Summarize key points and action items from this transcript.",
@@ -36,6 +39,15 @@ const DEFAULT_SETTINGS: RuntimeSettings = {
 const AI_MODEL_OPTIONS = [
   { value: "deepseek-v4-flash", label: "DeepSeek V4 Flash" },
   { value: "deepseek-v4-pro", label: "DeepSeek V4 Pro" },
+];
+
+const APP_VERSION = "0.6.0";
+
+const APP_TABS: Array<{ key: TabKey; label: string; icon: typeof Mic }> = [
+  { key: "live", label: "Live", icon: Mic },
+  { key: "ai", label: "AI", icon: Sparkles },
+  { key: "models", label: "Models", icon: Boxes },
+  { key: "settings", label: "Settings", icon: Settings2 },
 ];
 
 function bytes(value: number | null): string {
@@ -113,10 +125,16 @@ export function App() {
   const sessionState = deriveSessionState({ ...(status ?? ({} as RuntimeStatus)), running: effectiveRunning }, inFlight, !!error);
   const analyzeEnabled = canAnalyzeNow(aiReadiness.state, transcript);
   const displayedTranscript = normalizeTranscriptChunk(transcript);
-
-  useEffect(() => {
-    followStateRef.current = followState;
-  }, [followState]);
+  const analysisStateLabel =
+    aiReadiness.state !== "ready"
+      ? "Analysis unavailable"
+      : status?.analysis_in_progress
+        ? "Analysis in progress"
+        : !settings.auto_analysis_enabled
+          ? "Automatic analysis disabled"
+          : status?.transcript_signature && status?.last_analysis_signature && status.transcript_signature === status.last_analysis_signature && transcript.trim().length > 0
+            ? "Analysis up to date"
+            : "Waiting for new transcript";
 
   useEffect(() => {
     settingsRef.current = settings;
@@ -140,9 +158,10 @@ export function App() {
       initializedRef.current = true;
       apiGet<RuntimeSettings>("/settings")
         .then((loaded) => {
-          const normalized = AI_MODEL_OPTIONS.some((opt) => opt.value === loaded.llm_model)
-            ? loaded
-            : { ...loaded, llm_model: DEFAULT_SETTINGS.llm_model };
+          const normalizedBase = { ...DEFAULT_SETTINGS, ...loaded };
+          const normalized = AI_MODEL_OPTIONS.some((opt) => opt.value === normalizedBase.llm_model)
+            ? normalizedBase
+            : { ...normalizedBase, llm_model: DEFAULT_SETTINGS.llm_model };
           setSettings(normalized);
           if (normalized.llm_model !== loaded.llm_model) {
             void apiPutSettings(normalized);
@@ -221,6 +240,14 @@ export function App() {
         if (msg.type === "analysis") {
           setAnalysis(msg.text);
           setAnalysisUpdatedAt(Date.now());
+        }
+        if (msg.type === "transcript_reset" || msg.type === "analysis_reset") {
+          setTranscript("");
+          setAnalysis("");
+          setAnalysisUpdatedAt(null);
+          setUnreadChunks(0);
+          setFollowState("following");
+          transcriptRef.current?.scrollTo({ top: 0, behavior: "auto" });
         }
         if (msg.type === "error") setError(msg.message);
       };
@@ -413,6 +440,16 @@ export function App() {
     setTab("live");
   };
 
+  const clearTranscript = async () => {
+    await apiPost("/transcript/clear");
+    setTranscript("");
+    setAnalysis("");
+    setAnalysisUpdatedAt(null);
+    setUnreadChunks(0);
+    setFollowState("following");
+    transcriptRef.current?.scrollTo({ top: 0, behavior: "auto" });
+  };
+
   const warmupWithRetry = async () => {
     try {
       const r = await apiWarmupModel();
@@ -428,20 +465,22 @@ export function App() {
   return (
     <div className="page page-fill">
       <header className="hero sticky-header">
-        <div>
-          <p className="label">EchoPilot</p>
-          <h1>Live-first workspace</h1>
-          <p className="muted">{aiReadiness.state === "ready" ? "AI analysis enabled" : "AI needs setup"}</p>
+        <div className="hero-brand">
+          <div className="hero-mark" aria-hidden="true">
+            <Mic size={28} />
+          </div>
+          <div className="hero-copy">
+            <h1 className="hero-title">EchoPilot</h1>
+            <p className="hero-subtitle">Live computer-audio transcription & AI analysis</p>
+          </div>
         </div>
         <SessionControls
           sessionState={sessionState}
-          canAnalyze={analyzeEnabled}
+          clearTranscriptOnStart={settings.clear_transcript_on_start}
+          onToggleClearTranscriptOnStart={(checked) => setSettings({ ...settings, clear_transcript_on_start: checked })}
+          stopCheckboxGapPx={0}
           onStart={onStart}
           onStop={onStop}
-          onAnalyze={() => safe(async () => {
-            setAnalysis((await apiPost<{ analysis: string }>("/analysis/now")).analysis);
-            setAnalysisUpdatedAt(Date.now());
-          })}
         />
       </header>
 
@@ -454,248 +493,282 @@ export function App() {
       />
 
       <nav className="tabs">
-        {[
-          { key: "live", label: "Live" },
-          { key: "ai", label: "AI" },
-          { key: "models", label: "Models" },
-          { key: "settings", label: "Settings" },
-        ].map((item) => (
-          <button key={item.key} className={`tab ${tab === item.key ? "active" : ""}`} onClick={() => setTab(item.key as TabKey)}>{item.label}</button>
+        {APP_TABS.map((item) => (
+          <button key={item.key} type="button" className={`tab ${tab === item.key ? "active" : ""}`} onClick={() => setTab(item.key)}>
+            <item.icon size={16} />
+            <span>{item.label}</span>
+          </button>
         ))}
       </nav>
 
-      {error ? <div className="error">{error}</div> : null}
-      {backendConnecting ? <div className="warning">Reconnecting to core backend...</div> : null}
-      {status?.fallback_reason ? <div className="warning">CUDA fallback active: {status.fallback_reason}</div> : null}
-      {queueAlert ? <div className="warning">{queueAlert}</div> : null}
+      <div className="workspace-shell">
+        <div className="workspace-alerts">
+          {error ? <div className="error">{error}</div> : null}
+          {backendConnecting ? <div className="warning">Reconnecting to core backend...</div> : null}
+          {status?.fallback_reason ? <div className="warning">CUDA fallback active: {status.fallback_reason}</div> : null}
+          {queueAlert ? <div className="warning">{queueAlert}</div> : null}
+        </div>
 
-      {tab === "live" ? (
-        <section className="live-grid live-fill">
-          <LiveTranscriptPane
-            text={displayedTranscript}
-            followState={followState}
-            unreadCount={unreadChunks}
-            preRef={transcriptRef}
-            onScroll={onTranscriptScroll}
-            onJumpToLatest={() => {
-              setFollowState("following");
-              setUnreadChunks(0);
-              transcriptRef.current?.scrollTo({ top: transcriptRef.current.scrollHeight, behavior: "smooth" });
-            }}
-          />
-          <AnalysisPane
-            analysisText={analysis || (settings.ai_enabled ? "No analysis yet." : "AI analysis is disabled in AI tab.")}
-            readinessState={aiReadiness.state}
-            readinessMessage={aiReadiness.message}
-            updatedLabel={analysisUpdatedLabel}
-            onOpenAiTab={() => setTab("ai")}
-          />
-        </section>
-      ) : null}
-
-      {tab === "ai" ? (
-        <section className="panel tab-panel">
-          <h2>AI Configuration</h2>
-          <AiReadinessCard readinessState={aiReadiness.state} readinessMessage={aiReadiness.message} statusLabel={aiReadiness.state === "ready" ? "Configured" : "Needs setup"} />
-          <div className="form-grid" style={{ marginTop: 12 }}>
-            <label>Enable AI analysis<select value={settings.ai_enabled ? "yes" : "no"} onChange={(e) => setSettings({ ...settings, ai_enabled: e.target.value === "yes" })}><option value="yes">Enabled</option><option value="no">Disabled</option></select></label>
-            <label>Base URL<input value={settings.base_url} onChange={(e) => setSettings({ ...settings, base_url: e.target.value })} /></label>
-            <label>Model Name
-              <select value={settings.llm_model} onChange={(e) => setSettings({ ...settings, llm_model: e.target.value })}>
-                {AI_MODEL_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
-            </label>
-            <label>Periodic Analysis (s)<input type="number" min={0} max={600} value={settings.analysis_interval_seconds} onChange={(e) => setSettings({ ...settings, analysis_interval_seconds: Number(e.target.value) })} /></label>
-            <label className="wide">Analysis Prompt<textarea value={settings.prompt} onChange={(e) => setSettings({ ...settings, prompt: e.target.value })} /></label>
-            <label className="wide">API Key (stored in Windows Credential Manager)<input type="text" value={apiKeyEdited ? apiKey : (apiKey || apiKeyHint)} onFocus={() => { if (apiKeyHint && !apiKeyEdited) setApiKeyEdited(true); }} onChange={(e) => { if (!apiKeyEdited) setApiKeyEdited(true); setApiKey(e.target.value); }} /></label>
-            <div className="wide muted ai-help-line">Lower periodic values increase API usage and UI churn.</div>
-            <div className="row wide"><button className="btn" onClick={() => safe(async () => { await apiPutSettings(settings); await refreshCatalog(); })}>Save AI Settings</button><button className="btn" onClick={() => safe(async () => { const nextApiKey = apiKey.trim(); if (!nextApiKey) return; await apiPost("/llm/credentials", { api_key: nextApiKey }); const credentials = await apiGet<{ configured: boolean; masked?: string | null }>("/llm/credentials/status"); setAiKeyConfigured(!!credentials.configured); setApiKeyHint((credentials.masked ?? "").trim()); setApiKey(""); setApiKeyEdited(false); })}>Save API Key</button></div>
-          </div>
-        </section>
-      ) : null}
-
-      {tab === "models" ? (
-        <section className="panel tab-panel models-tab-panel">
-          <div className="models-inline-status">
-            <span className="muted">Runtime:</span>
-            <strong>{status?.model ?? "unknown"}</strong>
-            <span className="muted">({status?.backend_asr ?? "-"})</span>
-            <span className="models-sep">|</span>
-            <span className="muted">Selected:</span>
-            <strong>{settings.model_id || "none"}</strong>
-            <span className="muted">({settings.asr_engine})</span>
-          </div>
-          <div className="queue-summary">
-            <span className="badge badge-soft">active: {downloadState?.active_task_id ?? "none"}</span>
-            <span className="badge badge-soft">queued: {downloadState?.queued_count ?? 0}</span>
-            <span className="badge badge-soft">done: {downloadState?.completed_count ?? 0}</span>
-            <span className={`badge ${(downloadState?.failed_count ?? 0) > 0 ? "badge-primary" : "badge-soft"}`}>failed: {downloadState?.failed_count ?? 0}</span>
-            <span className="badge badge-soft">global: {downloadState?.aggregate_percent?.toFixed(1) ?? "0.0"}%</span>
-          </div>
-
-          <div className="models-toolbar">
-            <div className="models-toolbar-main row">
-              <select
-                value={settings.asr_engine}
-                onChange={(e) => {
-                  const engine = e.target.value as "whisper" | "parakeet";
-                  const nextSettings = { ...settings, asr_engine: engine };
-                  setSettings(nextSettings);
-                  setModelFilters({ live: [], quality: [], speed: [], size: [], state: [], installed: [] });
-                  setModelFilter("");
-                  void safe(async () => {
-                    await apiPutSettings(nextSettings);
-                  });
-                  void safe(async () => {
-                    await refreshCatalog();
-                  });
+        <main className="workspace-content">
+          {tab === "live" ? (
+            <section className="live-grid live-fill">
+              <LiveTranscriptPane
+                text={displayedTranscript}
+                followState={followState}
+                unreadCount={unreadChunks}
+                preRef={transcriptRef}
+                onScroll={onTranscriptScroll}
+                onClearTranscript={() => safe(clearTranscript)}
+                onJumpToLatest={() => {
+                  setFollowState("following");
+                  setUnreadChunks(0);
+                  transcriptRef.current?.scrollTo({ top: transcriptRef.current.scrollHeight, behavior: "smooth" });
                 }}
-              >
-                <option value="whisper">Whisper</option>
-                <option value="parakeet">Parakeet</option>
-              </select>
-              <input value={modelFilter} onChange={(e) => setModelFilter(e.target.value)} placeholder="Filter model id..." />
-            </div>
-            <div className="models-filter-dropdowns row">
-              <details className="filter-dropdown">
-                <summary>Live suitability ({modelFilters.live.length})</summary>
-                <div className="models-filter-options">
-                  {filterOptions.live.map((v) => (
-                    <label key={`live-${v}`} className="inline-check">
-                      <input type="checkbox" checked={modelFilters.live.includes(v)} onChange={() => toggleFilter("live", v)} />
-                      {v}
-                    </label>
-                  ))}
-                </div>
-              </details>
-              <details className="filter-dropdown">
-                <summary>Quality ({modelFilters.quality.length})</summary>
-                <div className="models-filter-options">
-                  {filterOptions.quality.map((v) => (
-                    <label key={`quality-${v}`} className="inline-check">
-                      <input type="checkbox" checked={modelFilters.quality.includes(v)} onChange={() => toggleFilter("quality", v)} />
-                      {v}
-                    </label>
-                  ))}
-                </div>
-              </details>
-              <details className="filter-dropdown">
-                <summary>Speed ({modelFilters.speed.length})</summary>
-                <div className="models-filter-options">
-                  {filterOptions.speed.map((v) => (
-                    <label key={`speed-${v}`} className="inline-check">
-                      <input type="checkbox" checked={modelFilters.speed.includes(v)} onChange={() => toggleFilter("speed", v)} />
-                      {v}
-                    </label>
-                  ))}
-                </div>
-              </details>
-              <details className="filter-dropdown">
-                <summary>Size ({modelFilters.size.length})</summary>
-                <div className="models-filter-options">
-                  {filterOptions.size.map((v) => (
-                    <label key={`size-${v}`} className="inline-check">
-                      <input type="checkbox" checked={modelFilters.size.includes(v)} onChange={() => toggleFilter("size", v)} />
-                      {v}
-                    </label>
-                  ))}
-                </div>
-              </details>
-              <details className="filter-dropdown">
-                <summary>State ({modelFilters.state.length})</summary>
-                <div className="models-filter-options">
-                  {filterOptions.state.map((v) => (
-                    <label key={`state-${v}`} className="inline-check">
-                      <input type="checkbox" checked={modelFilters.state.includes(v)} onChange={() => toggleFilter("state", v)} />
-                      {v}
-                    </label>
-                  ))}
-                </div>
-              </details>
-              <details className="filter-dropdown">
-                <summary>Installed ({modelFilters.installed.length})</summary>
-                <div className="models-filter-options">
-                  {(["yes", "no"] as const).map((v) => (
-                    <label key={`installed-${v}`} className="inline-check">
-                      <input type="checkbox" checked={modelFilters.installed.includes(v)} onChange={() => toggleFilter("installed", v)} />
-                      {v}
-                    </label>
-                  ))}
-                </div>
-              </details>
-              <details className="filter-dropdown advanced-sort">
-                <summary>Advanced sort</summary>
-                <div className="models-filter-options">
-                  <select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortBy)}><option value="downloads">downloads</option><option value="speed">speed</option><option value="quality">quality</option><option value="live">live suitability</option><option value="size">model size</option><option value="installed">installed</option><option value="name">name</option></select>
-                  <select value={sortDir} onChange={(e) => setSortDir(e.target.value as SortDir)}><option value="desc">desc</option><option value="asc">asc</option></select>
-                </div>
-              </details>
-            </div>
-            <div className="models-toolbar-actions row">
-              <button className="btn" onClick={() => safe(async () => { await apiPutSettings(settings); await refreshCatalog(); })}>Select Model</button>
-              <button className="btn primary" onClick={() => safe(async () => { await applyModelDirect(settings.model_id); })}>Apply to Runtime</button>
-              <label className="inline-check"><input type="checkbox" checked={autoApplyAfterDownload} onChange={(e) => setAutoApplyAfterDownload(e.target.checked)} />Auto-apply after download</label>
-              <button className="btn btn-quiet" onClick={() => safe(refreshCatalog)}>Refresh</button>
-              <button className="btn btn-quiet" onClick={() => safe(warmupWithRetry)}>Warmup</button>
-              <button className="btn btn-quiet" onClick={() => setModelFilters({ live: [], quality: [], speed: [], size: [], state: [], installed: [] })}>Clear filters</button>
-            </div>
-          </div>
-          {warmupInfo ? <div className="muted" style={{ marginBottom: 10 }}>{warmupInfo}</div> : null}
+              />
+              <AnalysisPane
+                analysisText={analysis || (settings.ai_enabled ? "No analysis yet." : "AI analysis is disabled in AI tab.")}
+                readinessState={aiReadiness.state}
+                readinessMessage={aiReadiness.message}
+                updatedLabel={analysisUpdatedLabel}
+                analysisStateLabel={analysisStateLabel}
+                canAnalyzeNow={analyzeEnabled}
+                autoAnalysisEnabled={settings.auto_analysis_enabled}
+                onToggleAutoAnalysis={(checked) => setSettings({ ...settings, auto_analysis_enabled: checked })}
+                onAnalyzeNow={() => safe(async () => {
+                  setAnalysis((await apiPost<{ analysis: string }>("/analysis/now")).analysis);
+                  setAnalysisUpdatedAt(Date.now());
+                })}
+                onOpenAiTab={() => setTab("ai")}
+              />
+            </section>
+          ) : null}
 
-          <div className="model-list">
-            {activeModels.length === 0 ? (
-              <div className="model-empty">
-                <strong>No models match current filters.</strong>
-                <span className="muted">Try clearing filters or switching engine.</span>
-                <button className="btn btn-quiet" onClick={() => setModelFilters({ live: [], quality: [], speed: [], size: [], state: [], installed: [] })}>Clear filters</button>
+          {tab === "ai" ? (
+            <section className="panel tab-panel ai-tab-panel">
+              <div className="panel-head">
+                <h2>AI Configuration</h2>
+                <AiReadinessCard readinessState={aiReadiness.state} readinessMessage={aiReadiness.message} statusLabel={aiReadiness.state === "ready" ? "Configured" : "Needs setup"} />
               </div>
-            ) : null}
-            {activeModels.slice(0, 200).map((model) => {
-              const isSelected = model.id === settings.model_id || model.is_selected;
-              const isRuntimeModel = (status?.model ?? "") === model.id;
-              return (
-                <ModelRow
-                  key={model.id}
-                  model={model}
-                  isSelected={isSelected}
-                  isRuntimeModel={isRuntimeModel}
-                  elapsedSeconds={elapsedSeconds(model.task_timestamps?.started_at)}
-                  canUse={model.availability === "ready" && !isSelected}
-                  bytes={bytes}
-                  onUse={(modelId) => safe(async () => { await applyModelDirect(modelId); })}
-                  onDownload={(modelId) => safe(async () => { await apiDownloadModel(settings.asr_engine, modelId); if (autoApplyAfterDownload) setPendingApply({ engine: settings.asr_engine, modelId }); await refreshCatalog(); })}
-                  onCancel={(taskId) => safe(async () => { await apiCancelDownload(taskId); await refreshCatalog(); })}
-                  onRetry={(taskId) => safe(async () => { await apiRetryDownload(taskId); await refreshCatalog(); })}
-                />
-              );
-            })}
-          </div>
-        </section>
-      ) : null}
+              <div className="form-grid ai-form-grid">
+                <label>Enable AI analysis<select value={settings.ai_enabled ? "yes" : "no"} onChange={(e) => setSettings({ ...settings, ai_enabled: e.target.value === "yes" })}><option value="yes">Enabled</option><option value="no">Disabled</option></select></label>
+                <label>Base URL<input value={settings.base_url} onChange={(e) => setSettings({ ...settings, base_url: e.target.value })} /></label>
+                <label>Model Name
+                  <select value={settings.llm_model} onChange={(e) => setSettings({ ...settings, llm_model: e.target.value })}>
+                    {AI_MODEL_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>Periodic Analysis (s)<input type="number" min={0} max={600} value={settings.analysis_interval_seconds} onChange={(e) => setSettings({ ...settings, analysis_interval_seconds: Number(e.target.value) })} /></label>
+                <label className="wide">Analysis Prompt<textarea value={settings.prompt} onChange={(e) => setSettings({ ...settings, prompt: e.target.value })} /></label>
+                <label className="wide">API Key (stored in Windows Credential Manager)<input type="text" value={apiKeyEdited ? apiKey : (apiKey || apiKeyHint)} onFocus={() => { if (apiKeyHint && !apiKeyEdited) setApiKeyEdited(true); }} onChange={(e) => { if (!apiKeyEdited) setApiKeyEdited(true); setApiKey(e.target.value); }} /></label>
+                <div className="wide muted ai-help-line">Lower periodic values increase API usage and UI churn.</div>
+                <div className="row wide"><button className="btn" onClick={() => safe(async () => { const nextApiKey = apiKey.trim(); if (!nextApiKey) return; await apiPost("/llm/credentials", { api_key: nextApiKey }); const credentials = await apiGet<{ configured: boolean; masked?: string | null }>("/llm/credentials/status"); setAiKeyConfigured(!!credentials.configured); setApiKeyHint((credentials.masked ?? "").trim()); setApiKey(""); setApiKeyEdited(false); })}>Save API Key</button></div>
+              </div>
+            </section>
+          ) : null}
 
-      {tab === "settings" ? (
-        <section className="panel tab-panel">
-          <h2>Runtime Settings</h2>
-          <div className="form-grid">
-            <label>Language<select value={settings.language} onChange={(e) => setSettings({ ...settings, language: e.target.value })}><option value="en">English</option><option value="pt">Portuguese</option><option value="es">Spanish</option><option value="fr">French</option><option value="de">German</option></select></label>
-            <label>Chunk Seconds<input type="number" min={1} max={10} step={0.5} value={settings.chunk_seconds} onChange={(e) => setSettings({ ...settings, chunk_seconds: Number(e.target.value) })} /></label>
-            <div className="row wide"><button className="btn" onClick={() => safe(async () => { await apiPutSettings(settings); await refreshCatalog(); })}>Save Runtime Settings</button></div>
-          </div>
-          <details style={{ marginTop: 12 }}>
-            <summary className="muted">Show diagnostics</summary>
-            <div className="status-grid" style={{ marginTop: 12 }}>
-              <div className="stat"><span>ASR Backend</span><strong>{status?.backend_asr ?? "-"}</strong></div>
-              <div className="stat"><span>Capture Device</span><strong>{status?.capture_device ?? "-"}</strong></div>
-              <div className="stat"><span>Model</span><strong>{status?.model ?? "-"}</strong></div>
-              <div className="stat"><span>Latency</span><strong>{status?.avg_chunk_latency_ms ?? 0} ms</strong></div>
-              <div className="stat"><span>CUDA</span><strong>{status?.cuda_active ? "active" : "inactive"}</strong></div>
-              <div className="stat"><span>Fallback</span><strong>{status?.fallback_reason ?? "none"}</strong></div>
-            </div>
-          </details>
-        </section>
-      ) : null}
+          {tab === "models" ? (
+            <section className="panel tab-panel models-tab-panel">
+              <div className="models-inline-status">
+                <span className="muted">Runtime:</span>
+                <strong>{status?.model ?? "unknown"}</strong>
+                <span className="muted">({status?.backend_asr ?? "-"})</span>
+                <span className="models-sep">|</span>
+                <span className="muted">Selected:</span>
+                <strong>{settings.model_id || "none"}</strong>
+                <span className="muted">({settings.asr_engine})</span>
+              </div>
+              <div className="queue-summary">
+                <span className="badge badge-soft">active: {downloadState?.active_task_id ?? "none"}</span>
+                <span className="badge badge-soft">queued: {downloadState?.queued_count ?? 0}</span>
+                <span className="badge badge-soft">done: {downloadState?.completed_count ?? 0}</span>
+                <span className={`badge ${(downloadState?.failed_count ?? 0) > 0 ? "badge-primary" : "badge-soft"}`}>failed: {downloadState?.failed_count ?? 0}</span>
+                <span className="badge badge-soft">global: {downloadState?.aggregate_percent?.toFixed(1) ?? "0.0"}%</span>
+              </div>
+
+              <div className="models-toolbar">
+                <div className="models-toolbar-main row">
+                  <select
+                    value={settings.asr_engine}
+                    onChange={(e) => {
+                      const engine = e.target.value as "whisper" | "parakeet";
+                      const nextSettings = { ...settings, asr_engine: engine };
+                      setSettings(nextSettings);
+                      setModelFilters({ live: [], quality: [], speed: [], size: [], state: [], installed: [] });
+                      setModelFilter("");
+                      void safe(async () => {
+                        await apiPutSettings(nextSettings);
+                      });
+                      void safe(async () => {
+                        await refreshCatalog();
+                      });
+                    }}
+                  >
+                    <option value="whisper">Whisper</option>
+                    <option value="parakeet">Parakeet</option>
+                  </select>
+                  <input value={modelFilter} onChange={(e) => setModelFilter(e.target.value)} placeholder="Filter model id..." />
+                </div>
+                <div className="models-filter-dropdowns row">
+                  <details className="filter-dropdown">
+                    <summary>Live suitability ({modelFilters.live.length})</summary>
+                    <div className="models-filter-options">
+                      {filterOptions.live.map((v) => (
+                        <label key={`live-${v}`} className="inline-check">
+                          <input type="checkbox" checked={modelFilters.live.includes(v)} onChange={() => toggleFilter("live", v)} />
+                          {v}
+                        </label>
+                      ))}
+                    </div>
+                  </details>
+                  <details className="filter-dropdown">
+                    <summary>Quality ({modelFilters.quality.length})</summary>
+                    <div className="models-filter-options">
+                      {filterOptions.quality.map((v) => (
+                        <label key={`quality-${v}`} className="inline-check">
+                          <input type="checkbox" checked={modelFilters.quality.includes(v)} onChange={() => toggleFilter("quality", v)} />
+                          {v}
+                        </label>
+                      ))}
+                    </div>
+                  </details>
+                  <details className="filter-dropdown">
+                    <summary>Speed ({modelFilters.speed.length})</summary>
+                    <div className="models-filter-options">
+                      {filterOptions.speed.map((v) => (
+                        <label key={`speed-${v}`} className="inline-check">
+                          <input type="checkbox" checked={modelFilters.speed.includes(v)} onChange={() => toggleFilter("speed", v)} />
+                          {v}
+                        </label>
+                      ))}
+                    </div>
+                  </details>
+                  <details className="filter-dropdown">
+                    <summary>Size ({modelFilters.size.length})</summary>
+                    <div className="models-filter-options">
+                      {filterOptions.size.map((v) => (
+                        <label key={`size-${v}`} className="inline-check">
+                          <input type="checkbox" checked={modelFilters.size.includes(v)} onChange={() => toggleFilter("size", v)} />
+                          {v}
+                        </label>
+                      ))}
+                    </div>
+                  </details>
+                  <details className="filter-dropdown">
+                    <summary>State ({modelFilters.state.length})</summary>
+                    <div className="models-filter-options">
+                      {filterOptions.state.map((v) => (
+                        <label key={`state-${v}`} className="inline-check">
+                          <input type="checkbox" checked={modelFilters.state.includes(v)} onChange={() => toggleFilter("state", v)} />
+                          {v}
+                        </label>
+                      ))}
+                    </div>
+                  </details>
+                  <details className="filter-dropdown">
+                    <summary>Installed ({modelFilters.installed.length})</summary>
+                    <div className="models-filter-options">
+                      {(["yes", "no"] as const).map((v) => (
+                        <label key={`installed-${v}`} className="inline-check">
+                          <input type="checkbox" checked={modelFilters.installed.includes(v)} onChange={() => toggleFilter("installed", v)} />
+                          {v}
+                        </label>
+                      ))}
+                    </div>
+                  </details>
+                  <details className="filter-dropdown advanced-sort">
+                    <summary>Advanced sort</summary>
+                    <div className="models-filter-options">
+                      <select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortBy)}><option value="downloads">downloads</option><option value="speed">speed</option><option value="quality">quality</option><option value="live">live suitability</option><option value="size">model size</option><option value="installed">installed</option><option value="name">name</option></select>
+                      <select value={sortDir} onChange={(e) => setSortDir(e.target.value as SortDir)}><option value="desc">desc</option><option value="asc">asc</option></select>
+                    </div>
+                  </details>
+                </div>
+                <div className="models-toolbar-actions row">
+                  <button className="btn" onClick={() => safe(async () => { await apiPutSettings(settings); await refreshCatalog(); })}>Select Model</button>
+                  <button className="btn primary" onClick={() => safe(async () => { await applyModelDirect(settings.model_id); })}>Apply to Runtime</button>
+                  <label className="inline-check"><input type="checkbox" checked={autoApplyAfterDownload} onChange={(e) => setAutoApplyAfterDownload(e.target.checked)} />Auto-apply after download</label>
+                  <button className="btn btn-quiet" onClick={() => safe(refreshCatalog)}>Refresh</button>
+                  <button className="btn btn-quiet" onClick={() => safe(warmupWithRetry)}>Warmup</button>
+                  <button className="btn btn-quiet" onClick={() => setModelFilters({ live: [], quality: [], speed: [], size: [], state: [], installed: [] })}>Clear filters</button>
+                </div>
+              </div>
+              {warmupInfo ? <div className="muted" style={{ marginBottom: 10 }}>{warmupInfo}</div> : null}
+
+              <div className="model-list">
+                {activeModels.length === 0 ? (
+                  <div className="model-empty">
+                    <strong>No models match current filters.</strong>
+                    <span className="muted">Try clearing filters or switching engine.</span>
+                    <button className="btn btn-quiet" onClick={() => setModelFilters({ live: [], quality: [], speed: [], size: [], state: [], installed: [] })}>Clear filters</button>
+                  </div>
+                ) : null}
+                {activeModels.slice(0, 200).map((model) => {
+                  const isSelected = model.id === settings.model_id || model.is_selected;
+                  const isRuntimeModel = (status?.model ?? "") === model.id;
+                  return (
+                    <ModelRow
+                      key={model.id}
+                      model={model}
+                      isSelected={isSelected}
+                      isRuntimeModel={isRuntimeModel}
+                      elapsedSeconds={elapsedSeconds(model.task_timestamps?.started_at)}
+                      canUse={model.availability === "ready" && !isSelected}
+                      bytes={bytes}
+                      onUse={(modelId) => safe(async () => { await applyModelDirect(modelId); })}
+                      onDownload={(modelId) => safe(async () => { await apiDownloadModel(settings.asr_engine, modelId); if (autoApplyAfterDownload) setPendingApply({ engine: settings.asr_engine, modelId }); await refreshCatalog(); })}
+                      onCancel={(taskId) => safe(async () => { await apiCancelDownload(taskId); await refreshCatalog(); })}
+                      onRetry={(taskId) => safe(async () => { await apiRetryDownload(taskId); await refreshCatalog(); })}
+                    />
+                  );
+                })}
+              </div>
+            </section>
+          ) : null}
+
+          {tab === "settings" ? (
+            <section className="panel tab-panel settings-tab-panel">
+              <div className="panel-head">
+                <h2>Runtime Settings</h2>
+                <span className="badge badge-soft">Auto-saved</span>
+              </div>
+              <div className="settings-grid">
+                <div className="settings-card">
+                  <div className="settings-card-head">
+                    <strong>Capture</strong>
+                    <span className="muted">Adjust language and chunking for transcription flow.</span>
+                  </div>
+                  <div className="form-grid">
+                    <label>Language<select value={settings.language} onChange={(e) => setSettings({ ...settings, language: e.target.value })}><option value="en">English</option><option value="pt">Portuguese</option><option value="es">Spanish</option><option value="fr">French</option><option value="de">German</option></select></label>
+                    <label>Chunk Seconds<input type="number" min={1} max={10} step={0.5} value={settings.chunk_seconds} onChange={(e) => setSettings({ ...settings, chunk_seconds: Number(e.target.value) })} /></label>
+                    <div className="row wide"><button className="btn" onClick={() => safe(async () => { await apiPutSettings(settings); await refreshCatalog(); })}>Save Runtime Settings</button></div>
+                  </div>
+                </div>
+                <div className="settings-card">
+                  <div className="settings-card-head">
+                    <strong>Diagnostics</strong>
+                    <span className="muted">Backend state, capture, and model health.</span>
+                  </div>
+                  <div className="status-grid settings-stat-grid">
+                    <div className="stat"><span>ASR Backend</span><strong>{status?.backend_asr ?? "-"}</strong></div>
+                    <div className="stat"><span>Capture Device</span><strong>{status?.capture_device ?? "-"}</strong></div>
+                    <div className="stat"><span>Model</span><strong>{status?.model ?? "-"}</strong></div>
+                    <div className="stat"><span>Latency</span><strong>{status?.avg_chunk_latency_ms ?? 0} ms</strong></div>
+                    <div className="stat"><span>CUDA</span><strong>{status?.cuda_active ? "active" : "inactive"}</strong></div>
+                    <div className="stat"><span>Fallback</span><strong>{status?.fallback_reason ?? "none"}</strong></div>
+                  </div>
+                </div>
+              </div>
+            </section>
+          ) : null}
+        </main>
+        <footer className="app-footer">
+          <div className="footer-item">EchoPilot v{APP_VERSION}</div>
+          <div className="footer-item">Local processing only</div>
+          <div className="footer-item">Your data stays on this device</div>
+        </footer>
+      </div>
     </div>
   );
 }

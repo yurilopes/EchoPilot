@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 import re
 from dataclasses import dataclass, field
 
@@ -10,6 +11,8 @@ CONTROL_PATTERN = r"[\u0000-\u0009\u000E-\u001F\u007F]+"
 @dataclass(slots=True)
 class TranscriptStore:
     chunks: list[str] = field(default_factory=list)
+    revision: int = 0
+    last_changed_monotonic: float = 0.0
 
     @staticmethod
     def normalize(chunk: str) -> str:
@@ -29,8 +32,12 @@ class TranscriptStore:
             if self.chunks and self.chunks[-1].endswith("-"):
                 merged = f"{self.chunks[-1][:-1]}{normalized.lstrip()}"
                 self.chunks[-1] = self.normalize(merged)
+                self.revision += 1
+                self.last_changed_monotonic = time.monotonic()
                 return self.chunks[-1]
             self.chunks.append(normalized)
+            self.revision += 1
+            self.last_changed_monotonic = time.monotonic()
             return normalized
         return None
 
@@ -40,3 +47,5 @@ class TranscriptStore:
 
     def clear(self) -> None:
         self.chunks.clear()
+        self.revision = 0
+        self.last_changed_monotonic = 0.0

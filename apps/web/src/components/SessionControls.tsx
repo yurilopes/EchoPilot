@@ -1,42 +1,66 @@
-import { Loader2, Play, Square, Sparkles } from "lucide-react";
+import type { CSSProperties } from "react";
+import { Loader2, Play, Square } from "lucide-react";
 import type { SessionUiState } from "../types";
 
 type Props = {
   sessionState: SessionUiState;
-  canAnalyze: boolean;
+  clearTranscriptOnStart: boolean;
+  onToggleClearTranscriptOnStart: (checked: boolean) => void;
+  stopCheckboxGapPx: number;
   onStart: () => void;
   onStop: () => void;
-  onAnalyze: () => void;
 };
 
-export function SessionControls({ sessionState, canAnalyze, onStart, onStop, onAnalyze }: Props) {
+export function SessionControls({
+  sessionState,
+  clearTranscriptOnStart,
+  onToggleClearTranscriptOnStart,
+  stopCheckboxGapPx,
+  onStart,
+  onStop,
+}: Props) {
   const startEnabled = sessionState === "idle" || sessionState === "error";
   const stopEnabled = sessionState === "running" || sessionState === "starting";
   const statusCopy =
     sessionState === "running"
-      ? "Listening to system audio"
+      ? "Running"
       : sessionState === "starting"
-        ? "Starting transcription..."
+        ? "Starting"
         : sessionState === "stopping"
-          ? "Stopping transcription..."
+          ? "Stopping"
           : "Stopped";
 
   return (
-    <div>
-      <div className="row">
-        <button className="btn primary" onClick={onStart} disabled={!startEnabled}>
-          {sessionState === "starting" ? <Loader2 size={16} className="spin" /> : <Play size={16} />}
-          {sessionState === "starting" ? "Starting..." : "Start"}
-        </button>
-        <button className="btn" onClick={onStop} disabled={!stopEnabled}>
-          {sessionState === "stopping" ? <Loader2 size={16} className="spin" /> : <Square size={16} />}
-          {sessionState === "stopping" ? "Stopping..." : "Stop"}
-        </button>
-        <button className="btn accent" onClick={onAnalyze} disabled={!canAnalyze}>
-          <Sparkles size={16} /> Analyze Now
-        </button>
+    <div className="session-controls">
+      <div className="session-status-card">
+        <span className={`session-dot session-dot-${sessionState}`} />
+        <div>
+          <span className="muted">Session Status</span>
+          <strong>{statusCopy}</strong>
+        </div>
       </div>
-      <div className="microcopy">{statusCopy}</div>
+      <div className="session-controls-stack" style={{ "--session-checkbox-gap": `${stopCheckboxGapPx}px` } as CSSProperties}>
+        <div className="session-controls-actions">
+          <button className="btn primary" onClick={onStart} disabled={!startEnabled}>
+            {sessionState === "starting" ? <Loader2 size={16} className="spin" /> : <Play size={16} />}
+            {sessionState === "starting" ? "Starting..." : "Start"}
+          </button>
+          <button className="btn" onClick={onStop} disabled={!stopEnabled}>
+            {sessionState === "stopping" ? <Loader2 size={16} className="spin" /> : <Square size={16} />}
+            {sessionState === "stopping" ? "Stopping..." : "Stop"}
+          </button>
+        </div>
+        <div className="session-controls-footer">
+          <label className="inline-check session-toggle">
+            <input
+              type="checkbox"
+              checked={clearTranscriptOnStart}
+              onChange={(e) => onToggleClearTranscriptOnStart(e.target.checked)}
+            />
+            Clear transcript on start
+          </label>
+        </div>
+      </div>
     </div>
   );
 }

@@ -20,6 +20,9 @@ export function deriveAiReadiness(
   if (!aiKeyConfigured) {
     return { state: "missing_key", message: "API key is not configured." };
   }
+  if (!settings.auto_analysis_enabled) {
+    return { state: "ready", message: "AI is configured and ready. Automatic analysis is disabled." };
+  }
 
   const llmStatus = (status?.llm_connection_status ?? "unknown").toLowerCase();
   if (llmStatus.includes("missing") || llmStatus.includes("key")) {

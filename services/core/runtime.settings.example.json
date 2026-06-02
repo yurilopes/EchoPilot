@@ -3,8 +3,10 @@
   "asr_engine": "whisper",
   "model_id": "base",
   "ai_enabled": true,
+  "auto_analysis_enabled": true,
   "chunk_seconds": 2.0,
-  "analysis_interval_seconds": 0,
+  "analysis_interval_seconds": 2,
+  "clear_transcript_on_start": false,
   "base_url": "https://api.deepseek.com",
   "llm_model": "deepseek-v4-flash",
   "prompt": "Summarize key points and action items from this transcript."

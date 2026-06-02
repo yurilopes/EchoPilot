@@ -12,8 +12,10 @@ class RuntimeSettings(BaseModel):
     asr_engine: Literal["whisper", "parakeet"] = "whisper"
     model_id: str = "base"
     ai_enabled: bool = True
+    auto_analysis_enabled: bool = True
     chunk_seconds: float = 2.0
-    analysis_interval_seconds: int = 0
+    analysis_interval_seconds: int = 2
+    clear_transcript_on_start: bool = False
     base_url: str = "https://api.deepseek.com"
     llm_model: str = "deepseek-v4-flash"
     prompt: str = "Summarize key points and action items from this transcript."

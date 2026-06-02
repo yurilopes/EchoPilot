@@ -26,8 +26,10 @@ if runtime_settings.asr_engine == "whisper" and "/" in runtime_settings.model_id
             asr_engine="whisper",
             model_id="base",
             ai_enabled=runtime_settings.ai_enabled,
+            auto_analysis_enabled=runtime_settings.auto_analysis_enabled,
             chunk_seconds=runtime_settings.chunk_seconds,
             analysis_interval_seconds=runtime_settings.analysis_interval_seconds,
+            clear_transcript_on_start=runtime_settings.clear_transcript_on_start,
             base_url=runtime_settings.base_url,
             llm_model=runtime_settings.llm_model,
             prompt=runtime_settings.prompt,
@@ -43,8 +45,10 @@ class RuntimeSettingsUpdate(BaseModel):
     asr_engine: str = Field(default="whisper")
     model_id: str = Field(default="base")
     ai_enabled: bool = Field(default=True)
+    auto_analysis_enabled: bool = Field(default=True)
     chunk_seconds: float = Field(default=2.0)
-    analysis_interval_seconds: int = Field(default=0)
+    analysis_interval_seconds: int = Field(default=2)
+    clear_transcript_on_start: bool = Field(default=False)
     base_url: str = Field(default="https://api.deepseek.com")
     llm_model: str = Field(default="deepseek-v4-flash")
     prompt: str = Field(default="Summarize key points and action items from this transcript.")
@@ -80,7 +84,7 @@ async def lifespan(_: FastAPI):
     await runtime_controller.stop()
 
 
-app = FastAPI(title="EchoPilot Core", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="EchoPilot Core", version="0.6.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
@@ -217,8 +221,10 @@ async def asr_apply_model(payload: ApplyModelInput) -> dict:
         asr_engine=payload.engine,
         model_id=payload.model_id,
         ai_enabled=current.ai_enabled,
+        auto_analysis_enabled=current.auto_analysis_enabled,
         chunk_seconds=current.chunk_seconds,
         analysis_interval_seconds=current.analysis_interval_seconds,
+        clear_transcript_on_start=current.clear_transcript_on_start,
         base_url=current.base_url,
         llm_model=current.llm_model,
         prompt=current.prompt,
@@ -298,6 +304,12 @@ async def analyze_now() -> dict:
         return {"ok": True, "analysis": text}
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/transcript/clear")
+async def clear_transcript() -> dict:
+    await runtime_controller.clear_transcript()
+    return {"ok": True, "status": runtime_controller.status_payload()}
 
 
 @app.get("/transcript")

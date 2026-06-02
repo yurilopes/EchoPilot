@@ -14,6 +14,9 @@ export type RuntimeStatus = {
   cuda_active: boolean;
   fallback_reason: string | null;
   llm_connection_status: string;
+  analysis_in_progress: boolean;
+  last_analysis_signature: string;
+  transcript_signature: string;
   transcript_chars: number;
 };
 
@@ -22,8 +25,10 @@ export type RuntimeSettings = {
   asr_engine: "whisper" | "parakeet";
   model_id: string;
   ai_enabled: boolean;
+  auto_analysis_enabled: boolean;
   chunk_seconds: number;
   analysis_interval_seconds: number;
+  clear_transcript_on_start: boolean;
   base_url: string;
   llm_model: string;
   prompt: string;

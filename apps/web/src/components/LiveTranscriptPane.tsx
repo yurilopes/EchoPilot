@@ -1,4 +1,4 @@
-import { ArrowDown } from "lucide-react";
+import { ArrowDown, FileText } from "lucide-react";
 import type { RefObject, UIEvent } from "react";
 import type { TranscriptFollowState } from "../types";
 
@@ -8,19 +8,32 @@ type Props = {
   unreadCount: number;
   preRef: RefObject<HTMLDivElement | null>;
   onScroll: (ev: UIEvent<HTMLDivElement>) => void;
+  onClearTranscript: () => void;
   onJumpToLatest: () => void;
 };
 
-export function LiveTranscriptPane({ text, followState, unreadCount, preRef, onScroll, onJumpToLatest }: Props) {
+export function LiveTranscriptPane({ text, followState, unreadCount, preRef, onScroll, onClearTranscript, onJumpToLatest }: Props) {
   const singleLineText = text.replace(/\s+/g, " ").trim();
+  const hasTranscript = singleLineText.length > 0;
 
   return (
     <article className="panel transcript-panel">
       <div className="panel-head">
         <h2>Live Transcript</h2>
+        <button className="btn btn-quiet transcript-clear" onClick={onClearTranscript}>Clear transcript</button>
       </div>
       <div ref={preRef} className="transcript-pre" onScroll={onScroll}>
-        <span className="transcript-line">{singleLineText || "No transcript yet."}</span>
+        {hasTranscript ? (
+          <span className="transcript-line">{singleLineText}</span>
+        ) : (
+          <div className="transcript-empty">
+            <div className="transcript-empty-icon">
+              <FileText size={28} />
+            </div>
+            <strong>No transcript yet.</strong>
+            <span className="muted">Start the session to begin live transcription.</span>
+          </div>
+        )}
       </div>
       {followState === "paused" ? (
         <div className="row transcript-jump">
