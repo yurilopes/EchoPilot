@@ -7,7 +7,7 @@
 - Implemented FastAPI core with endpoints, websocket, runtime controller, and settings/secrets modules.
 - Added ASR engine shell using faster-whisper with CUDA-to-CPU fallback tracking.
 - Added WASAPI loopback capture adapter using `sounddevice`.
-- Implemented OpenAI-compatible LLM analysis client.
+- Implemented DeepSeek LLM analysis client.
 - Created React web UI with custom design system and observability dashboard.
 - Created Tauri 2 desktop shell with Always On Top and PiP toggles.
 - Added setup/run/build PowerShell scripts for Windows.

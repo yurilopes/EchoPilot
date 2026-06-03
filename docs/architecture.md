@@ -6,7 +6,7 @@
 3. Transcript chunk is appended to accumulated store.
 4. WebSocket broadcasts transcript and runtime status.
 5. User triggers LLM analysis manually or periodically.
-6. Analysis response is returned and streamed to UI.
+6. DeepSeek analysis response is returned and streamed to UI.
 
 ## Components
 - Core service (`services/core`): source of truth for runtime and status.

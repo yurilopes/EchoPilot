@@ -12,7 +12,7 @@
 ## Install flow
 1. Download MSI and run installer.
 2. Launch `EchoPilot` from Start Menu.
-3. Open settings, configure API key and model endpoint.
+3. Open settings, configure the DeepSeek API key and base URL.
 4. Press Start and verify live transcript updates.
 
 ## Portable flow
@@ -23,4 +23,4 @@
 ## Troubleshooting
 - If transcript is blank: verify system audio is playing and check `/diagnostics`.
 - If CUDA inactive: verify driver/runtime and inspect `fallback_reason`.
-- If LLM errors: check base URL, model, and API key in Credential Manager.
+- If LLM errors: check the DeepSeek base URL, model, and API key in Credential Manager.

@@ -6,7 +6,7 @@ from time import perf_counter
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from realtime_system_transcriber.model_registry import AsrModelRegistry
 from realtime_system_transcriber.runtime import RuntimeController
@@ -43,17 +43,17 @@ model_registry = AsrModelRegistry(cache_dir=app_settings.settings_path.parent / 
 
 
 class RuntimeSettingsUpdate(BaseModel):
-    language: str = Field(default="en")
-    asr_engine: str = Field(default="whisper")
-    model_id: str = Field(default="base")
-    ai_enabled: bool = Field(default=True)
-    auto_analysis_enabled: bool = Field(default=True)
-    chunk_seconds: float = Field(default=2.0)
-    analysis_interval_seconds: int = Field(default=2)
-    clear_transcript_on_start: bool = Field(default=False)
-    base_url: str = Field(default="https://api.deepseek.com")
-    llm_model: str = Field(default="deepseek-v4-flash")
-    prompt: str = Field(default="Summarize key points and action items from this transcript.")
+    language: str | None = None
+    asr_engine: str | None = None
+    model_id: str | None = None
+    ai_enabled: bool | None = None
+    auto_analysis_enabled: bool | None = None
+    chunk_seconds: float | None = None
+    analysis_interval_seconds: int | None = None
+    clear_transcript_on_start: bool | None = None
+    base_url: str | None = None
+    llm_model: str | None = None
+    prompt: str | None = None
 
 
 class LlmCredentialsInput(BaseModel):
@@ -89,7 +89,12 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title="EchoPilot Core", version="0.6.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
+    allow_origins=[
+        "http://127.0.0.1:5173",
+        "http://localhost:5173",
+        "http://127.0.0.1:4173",
+        "http://localhost:4173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -119,12 +124,24 @@ async def get_ui_preferences() -> dict:
     return ui_preferences.model_dump()
 
 
-@app.put("/settings")
-async def update_settings(payload: RuntimeSettingsUpdate) -> dict:
-    new_settings = RuntimeSettings(**payload.model_dump())
+async def _update_settings(payload: RuntimeSettingsUpdate) -> dict:
+    settings_data = runtime_controller.runtime_settings.model_dump()
+    settings_data.update(payload.model_dump(exclude_unset=True))
+    new_settings = RuntimeSettings(**settings_data)
+    save_runtime_settings(app_settings.settings_path, new_settings)
     await runtime_controller.apply_runtime_settings(new_settings)
     save_runtime_settings(app_settings.settings_path, new_settings)
     return {"ok": True, "settings": new_settings.model_dump()}
+
+
+@app.put("/settings")
+async def update_settings(payload: RuntimeSettingsUpdate) -> dict:
+    return await _update_settings(payload)
+
+
+@app.post("/settings")
+async def update_settings_post(payload: RuntimeSettingsUpdate) -> dict:
+    return await _update_settings(payload)
 
 
 @app.put("/ui/preferences")
@@ -340,9 +357,12 @@ async def websocket_stream(websocket: WebSocket) -> None:
     try:
         await websocket.send_json({"type": "status", "data": runtime_controller.status_payload()})
         while True:
-            payload = await asyncio.wait_for(queue.get(), timeout=30)
-            await websocket.send_json(payload)
-    except (WebSocketDisconnect, asyncio.TimeoutError):
+            try:
+                payload = await asyncio.wait_for(queue.get(), timeout=30)
+                await websocket.send_json(payload)
+            except asyncio.TimeoutError:
+                await websocket.send_json({"type": "status", "data": runtime_controller.status_payload()})
+    except WebSocketDisconnect:
         pass
     finally:
         runtime_controller.unsubscribe(queue)

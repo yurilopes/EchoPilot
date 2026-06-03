@@ -48,7 +48,7 @@ export function RuntimeStatusStrip({ status, settingsModelId, settingsEngine, ba
         <span className="status-chip-icon status-chip-icon-device"><span className="status-chip-icon-glyph"><Monitor size={18} /></span></span>
         <div className="status-chip-content">
           <span>Device</span>
-          <strong>{status?.capture_device ?? "-"}</strong>
+          <strong>{toProperCase(status?.capture_device ?? "-")}</strong>
         </div>
       </div>
       <div className="status-chip">

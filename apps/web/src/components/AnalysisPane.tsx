@@ -13,7 +13,8 @@ type Props = {
   canAnalyzeNow: boolean;
   analysisBusy: boolean;
   autoAnalysisEnabled: boolean;
-  onToggleAutoAnalysis: (checked: boolean) => void;
+  autoAnalysisLoaded: boolean;
+  onToggleAutoAnalysis: (checked: boolean) => Promise<void>;
   onAnalyzeNow: () => void;
   onOpenAiTab: () => void;
 };
@@ -30,6 +31,7 @@ export function AnalysisPane({
   canAnalyzeNow,
   analysisBusy,
   autoAnalysisEnabled,
+  autoAnalysisLoaded,
   onToggleAutoAnalysis,
   onAnalyzeNow,
   onOpenAiTab,
@@ -60,6 +62,7 @@ export function AnalysisPane({
           <input
             type="checkbox"
             checked={autoAnalysisEnabled}
+            disabled={!autoAnalysisLoaded}
             onChange={(e) => onToggleAutoAnalysis(e.target.checked)}
           />
           Automatic analysis

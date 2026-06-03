@@ -4,7 +4,8 @@
   "version": "0.6.0",
   "identifier": "com.echopilot.EchoPilot",
   "build": {
-    "frontendDist": "../desktop",
+    "beforeBuildCommand": "cd ../web && npm run build",
+    "frontendDist": "../../web/dist",
     "devUrl": "http://127.0.0.1:5173"
   },
   "app": {

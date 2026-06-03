@@ -1,7 +1,9 @@
+import { invoke } from "@tauri-apps/api/core";
 import type { RuntimeSettings } from "./types";
 import type { UiPreferences } from "./types";
 
 const API = "http://127.0.0.1:8765";
+export type RuntimeSettingsPatch = Partial<RuntimeSettings>;
 
 function normalizeFetchError(error: unknown): Error {
   if (error instanceof TypeError && error.message.includes("Failed to fetch")) {
@@ -37,18 +39,42 @@ export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export async function apiPutSettings(settings: RuntimeSettings): Promise<void> {
+export async function apiPutSettings(settings: RuntimeSettingsPatch): Promise<void> {
   let response: Response;
   try {
     response = await fetch(`${API}/settings`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(settings)
+      body: JSON.stringify(settings),
+      keepalive: true
     });
   } catch (error) {
     throw normalizeFetchError(error);
   }
   if (!response.ok) throw new Error(await response.text());
+}
+
+export async function apiPostSettings(settings: RuntimeSettingsPatch): Promise<void> {
+  let response: Response;
+  try {
+    response = await fetch(`${API}/settings`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(settings),
+      keepalive: true
+    });
+  } catch (error) {
+    throw normalizeFetchError(error);
+  }
+  if (!response.ok) throw new Error(await response.text());
+}
+
+export async function cacheRuntimeSettingsSnapshot(settings: RuntimeSettings): Promise<void> {
+  try {
+    await invoke("cache_runtime_settings_snapshot", { snapshot: JSON.stringify(settings) });
+  } catch {
+    // Non-desktop contexts can ignore this backup path.
+  }
 }
 
 export async function apiGetUiPreferences(): Promise<UiPreferences> {
@@ -61,7 +87,8 @@ export async function apiPutUiPreferences(preferences: UiPreferences): Promise<v
     response = await fetch(`${API}/ui/preferences`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(preferences)
+      body: JSON.stringify(preferences),
+      keepalive: true
     });
   } catch (error) {
     throw normalizeFetchError(error);

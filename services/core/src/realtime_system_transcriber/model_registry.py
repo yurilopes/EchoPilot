@@ -15,6 +15,12 @@ from realtime_system_transcriber.download_tasks import (
     DownloadTask,
 )
 from realtime_system_transcriber.model_profiles import profile_model
+
+
+CATALOG_SUCCESS_TTL_SECONDS = 1800
+CATALOG_FAILURE_TTL_SECONDS = 300
+
+
 class AsrModelRegistry:
     def __init__(self, cache_dir: Path) -> None:
         self.cache_dir = cache_dir
@@ -24,11 +30,16 @@ class AsrModelRegistry:
         self._queue: deque[str] = deque()
         self._tasks: dict[str, DownloadTask] = {}
         self._task_by_model: dict[tuple[str, str], str] = {}
+        self._catalog_cache: dict[str, tuple[float, list[dict], bool]] = {}
         self._active_task_id: str | None = None
         self._worker = threading.Thread(target=self._worker_loop, name="asr-download-worker", daemon=True)
         self._worker.start()
 
     def list_models(self, query: str) -> list[dict]:
+        cached = self._cached_catalog_rows(query)
+        if cached is not None:
+            return self._with_installation_state(query, cached)
+
         try:
             models_iter = self.api.list_models(
                 search=query,
@@ -37,8 +48,13 @@ class AsrModelRegistry:
                 limit=200,
             )
             models = list(models_iter)
-        except Exception:
-            logger.warning("model_catalog_fetch_failed", engine=query)
+        except Exception as exc:
+            logger.warning(
+                "model_catalog_fetch_failed",
+                engine=query,
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
             models = []
         rows: list[dict] = []
         try:
@@ -55,12 +71,16 @@ class AsrModelRegistry:
                         "id": model_id,
                         "downloads": getattr(model, "downloads", None),
                         "last_modified": str(getattr(model, "last_modified", "")),
-                        "installed": self.is_installed(query, model_id),
                         "profile": profile_model(query, model_id),
                     }
                 )
-        except Exception:
-            logger.warning("model_catalog_iteration_failed", engine=query)
+        except Exception as exc:
+            logger.warning(
+                "model_catalog_iteration_failed",
+                engine=query,
+                error_type=type(exc).__name__,
+                error=str(exc),
+            )
             rows = []
         if query == "whisper":
             aliases = ["tiny", "base", "small", "medium", "large-v2", "large-v3", "turbo"]
@@ -73,11 +93,27 @@ class AsrModelRegistry:
                             "id": alias,
                             "downloads": None,
                             "last_modified": "",
-                            "installed": self.is_installed(query, alias),
                             "profile": profile_model(query, alias),
                         },
                     )
-        return rows
+        self._store_catalog_rows(query, rows, bool(models))
+        return self._with_installation_state(query, rows)
+
+    def _cached_catalog_rows(self, query: str) -> list[dict] | None:
+        cached = self._catalog_cache.get(query)
+        if not cached:
+            return None
+        cached_at, rows, ok = cached
+        ttl = CATALOG_SUCCESS_TTL_SECONDS if ok else CATALOG_FAILURE_TTL_SECONDS
+        if time.time() - cached_at > ttl:
+            return None
+        return [dict(row) for row in rows]
+
+    def _store_catalog_rows(self, query: str, rows: list[dict], ok: bool) -> None:
+        self._catalog_cache[query] = (time.time(), [dict(row) for row in rows], ok)
+
+    def _with_installation_state(self, query: str, rows: list[dict]) -> list[dict]:
+        return [{**row, "installed": self.is_installed(query, row["id"])} for row in rows]
 
     def _is_whisper_compatible_model_id(self, model_id: str) -> bool:
         # faster-whisper expects either built-in aliases or CTranslate2-converted repositories.

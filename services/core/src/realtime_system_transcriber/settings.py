@@ -37,11 +37,17 @@ def ensure_runtime_settings(path: Path) -> RuntimeSettings:
     path.parent.mkdir(parents=True, exist_ok=True)
     if not path.exists():
         settings = RuntimeSettings()
-        path.write_text(settings.model_dump_json(indent=2), encoding="utf-8")
+        _write_json_atomic(path, settings.model_dump_json(indent=2))
         return settings
     return RuntimeSettings.model_validate_json(path.read_text(encoding="utf-8"))
 
 
 def save_runtime_settings(path: Path, runtime_settings: RuntimeSettings) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(runtime_settings.model_dump_json(indent=2), encoding="utf-8")
+    _write_json_atomic(path, runtime_settings.model_dump_json(indent=2))
+
+
+def _write_json_atomic(path: Path, content: str) -> None:
+    temp_path = path.with_suffix(path.suffix + ".tmp")
+    temp_path.write_text(content, encoding="utf-8")
+    temp_path.replace(path)
