@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+
 from realtime_system_transcriber.ui_preferences import UiPreferences, ensure_ui_preferences, save_ui_preferences
 
 
@@ -73,3 +75,17 @@ def test_ui_preferences_round_trip(tmp_path) -> None:
     loaded = ensure_ui_preferences(path)
 
     assert loaded == prefs
+
+
+def test_ui_preferences_concurrent_writes_leave_valid_json(tmp_path) -> None:
+    path = tmp_path / "runtime" / "ui_preferences.json"
+
+    def write_preferences(index: int) -> None:
+        save_ui_preferences(path, UiPreferences(model_filter=f"model-{index}"))
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        list(executor.map(write_preferences, range(40)))
+
+    loaded = ensure_ui_preferences(path)
+    assert loaded.model_filter.startswith("model-")
+    assert list(path.parent.glob("*.tmp")) == []

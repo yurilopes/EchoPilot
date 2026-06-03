@@ -1,10 +1,16 @@
 ﻿from __future__ import annotations
 
 from pathlib import Path
+from threading import Lock
+from time import sleep
 from typing import Literal
+from uuid import uuid4
 
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_write_locks_guard = Lock()
+_write_locks: dict[Path, Lock] = {}
 
 
 class RuntimeSettings(BaseModel):
@@ -37,17 +43,33 @@ def ensure_runtime_settings(path: Path) -> RuntimeSettings:
     path.parent.mkdir(parents=True, exist_ok=True)
     if not path.exists():
         settings = RuntimeSettings()
-        _write_json_atomic(path, settings.model_dump_json(indent=2))
+        write_json_atomic(path, settings.model_dump_json(indent=2))
         return settings
     return RuntimeSettings.model_validate_json(path.read_text(encoding="utf-8"))
 
 
 def save_runtime_settings(path: Path, runtime_settings: RuntimeSettings) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    _write_json_atomic(path, runtime_settings.model_dump_json(indent=2))
+    write_json_atomic(path, runtime_settings.model_dump_json(indent=2))
 
 
-def _write_json_atomic(path: Path, content: str) -> None:
-    temp_path = path.with_suffix(path.suffix + ".tmp")
-    temp_path.write_text(content, encoding="utf-8")
-    temp_path.replace(path)
+def write_json_atomic(path: Path, content: str) -> None:
+    lock_key = path.resolve(strict=False)
+    with _write_locks_guard:
+        lock = _write_locks.setdefault(lock_key, Lock())
+
+    temp_path = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    with lock:
+        try:
+            temp_path.write_text(content, encoding="utf-8")
+            for attempt in range(5):
+                try:
+                    temp_path.replace(path)
+                    return
+                except PermissionError:
+                    if attempt == 4:
+                        raise
+                    sleep(0.05 * (attempt + 1))
+        finally:
+            if temp_path.exists():
+                temp_path.unlink()

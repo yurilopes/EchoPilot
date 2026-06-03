@@ -40,6 +40,7 @@ if runtime_settings.asr_engine == "whisper" and "/" in runtime_settings.model_id
 secret_store = SecretStore(app_settings.secret_service_name, app_settings.secret_username)
 runtime_controller = RuntimeController(runtime_settings, secret_store)
 model_registry = AsrModelRegistry(cache_dir=app_settings.settings_path.parent / "hf-cache")
+settings_update_lock = asyncio.Lock()
 
 
 class RuntimeSettingsUpdate(BaseModel):
@@ -125,13 +126,14 @@ async def get_ui_preferences() -> dict:
 
 
 async def _update_settings(payload: RuntimeSettingsUpdate) -> dict:
-    settings_data = runtime_controller.runtime_settings.model_dump()
-    settings_data.update(payload.model_dump(exclude_unset=True))
-    new_settings = RuntimeSettings(**settings_data)
-    save_runtime_settings(app_settings.settings_path, new_settings)
-    await runtime_controller.apply_runtime_settings(new_settings)
-    save_runtime_settings(app_settings.settings_path, new_settings)
-    return {"ok": True, "settings": new_settings.model_dump()}
+    async with settings_update_lock:
+        settings_data = runtime_controller.runtime_settings.model_dump()
+        settings_data.update(payload.model_dump(exclude_unset=True))
+        new_settings = RuntimeSettings(**settings_data)
+        save_runtime_settings(app_settings.settings_path, new_settings)
+        await runtime_controller.apply_runtime_settings(new_settings)
+        save_runtime_settings(app_settings.settings_path, new_settings)
+        return {"ok": True, "settings": new_settings.model_dump()}
 
 
 @app.put("/settings")

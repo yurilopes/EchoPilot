@@ -1,7 +1,9 @@
+from concurrent.futures import ThreadPoolExecutor
+
 from fastapi.testclient import TestClient
 
 from realtime_system_transcriber import main
-from realtime_system_transcriber.settings import RuntimeSettings
+from realtime_system_transcriber.settings import RuntimeSettings, save_runtime_settings
 
 
 def test_runtime_settings_defaults() -> None:
@@ -43,4 +45,18 @@ def test_partial_auto_analysis_update_persists_false(tmp_path, monkeypatch) -> N
     assert settings.auto_analysis_enabled is False
     assert settings.language == "pt"
     assert settings.chunk_seconds == 3.5
+
+
+def test_runtime_settings_concurrent_writes_leave_valid_json(tmp_path) -> None:
+    settings_path = tmp_path / "runtime" / "settings.json"
+
+    def write_settings(index: int) -> None:
+        save_runtime_settings(settings_path, RuntimeSettings(language=f"lang-{index}"))
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        list(executor.map(write_settings, range(40)))
+
+    settings = RuntimeSettings.model_validate_json(settings_path.read_text(encoding="utf-8"))
+    assert settings.language.startswith("lang-")
+    assert list(settings_path.parent.glob("*.tmp")) == []
 

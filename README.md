@@ -6,6 +6,9 @@ The name is a play on **echo + copilot**: it captures what is being said, transc
 
 The product combines real-time system audio transcription (WASAPI loopback), DeepSeek-only LLM analysis, and dual UI delivery (web + desktop with Always On Top and PiP).
 
+## Screenshot
+![EchoPilot application screenshot](./assets/screenshots/screenshot.png)
+
 ## Stack
 - Core service: Python + FastAPI + faster-whisper (CTranslate2)
 - Web app: React + Vite + TypeScript
