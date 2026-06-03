@@ -54,4 +54,4 @@ The product combines real-time system audio transcription (WASAPI loopback), Dee
 - MSI installer via Tauri bundling.
 - Portable ZIP assembled from desktop build + bundled core runtime.
 
-See [distribution guide](./docs/distribution.md) and [progress log](./docs/progress.md).
+See [distribution guide](./docs/distribution.md).

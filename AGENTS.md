@@ -22,7 +22,7 @@
 - `apps/web`: React + Vite operational UI.
 - `apps/desktop`: Tauri 2 desktop shell with Always On Top and PiP toggles.
 - `scripts`: single-command setup, run, build, and diagnostics.
-- `docs`: technical notes and progress logs.
+- `docs`: technical notes.
 
 ## Operating Conventions
 - Settings: `.env` plus `services/core/runtime/settings.json`.
