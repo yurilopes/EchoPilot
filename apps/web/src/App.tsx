@@ -15,7 +15,7 @@ import { useUiPreferences } from "./hooks/useUiPreferences";
 import { useModelsWorkspace } from "./hooks/useModelsWorkspace";
 import type { TabKey } from "./types";
 
-const APP_VERSION = "0.6.0";
+const APP_VERSION = "0.7.0";
 
 const APP_TABS: Array<{ key: TabKey; label: string; icon: typeof Mic }> = [
   { key: "live", label: "Live", icon: Mic },

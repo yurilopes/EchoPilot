@@ -24,12 +24,12 @@ function Invoke-Native {
 
 Write-Host "[build] Building web"
 Push-Location "$root\apps\web"
-Invoke-Native npm run build
+Invoke-Native npm.cmd run build
 Pop-Location
 
 Write-Host "[build] Building desktop MSI"
 Push-Location "$root\apps\desktop"
-Invoke-Native npm run build
+Invoke-Native npm.cmd run build
 Pop-Location
 
 Write-Host "[build] Collecting MSI artifact"

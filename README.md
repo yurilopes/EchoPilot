@@ -26,16 +26,28 @@ The product combines real-time system audio transcription (WASAPI loopback), Dee
 - Windows scripts for setup, run, and build.
 
 ## Quick Start (Windows)
-1. Run setup:
+1. Run the development setup once:
 ```powershell
 ./scripts/setup-dev.ps1
 ```
-2. Run local stack:
+2. Start the full local app from the repository root:
+```bat
+run-project.bat
+```
+This starts the core service, the Vite web app, and the Tauri desktop shell through `scripts/run-local.ps1`.
+
+3. If you prefer PowerShell, you can start the same local stack directly:
 ```powershell
 ./scripts/run-local.ps1
 ```
-3. Open browser UI:
+
+4. The web UI is available at:
 - [http://127.0.0.1:5173](http://127.0.0.1:5173)
+
+5. To stop all local EchoPilot processes:
+```bat
+scripts\stop-local.bat
+```
 
 ## Core API
 - `GET /health`

@@ -84,7 +84,7 @@ async def lifespan(_: FastAPI):
     await runtime_controller.stop()
 
 
-app = FastAPI(title="EchoPilot Core", version="0.6.0", lifespan=lifespan)
+app = FastAPI(title="EchoPilot Core", version="0.7.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
