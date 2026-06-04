@@ -6,14 +6,18 @@
     <title>EchoPilot Desktop</title>
     <style>
       body { margin: 0; font-family: Segoe UI, sans-serif; color: #123524; background: #ede6d8; }
-      .bar { display: flex; gap: 8px; padding: 8px; background: #123524; color: #ede6d8; }
+      .bar { display: flex; align-items: center; gap: 12px; padding: 8px; background: #123524; color: #ede6d8; }
+      .toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; white-space: nowrap; }
+      .toggle input { width: 16px; height: 16px; accent-color: #b59b6a; }
       button { border: 1px solid #b59b6a; background: #ede6d8; border-radius: 999px; padding: 6px 10px; cursor: pointer; }
+      #state { margin-left: auto; font-size: 13px; }
       iframe { border: 0; width: 100vw; height: calc(100vh - 44px); }
     </style>
   </head>
   <body>
     <div class="bar">
-      <button id="aot">Toggle Always On Top</button>
+      <label class="toggle"><input id="aot" type="checkbox" />Always on top</label>
+      <label class="toggle"><input id="capture-exclusion" type="checkbox" />Hide from screen capture</label>
       <button id="pip">Toggle PiP</button>
       <span id="state">Backend: booting...</span>
     </div>

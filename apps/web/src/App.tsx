@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { Boxes, Mic, Settings2, Sparkles } from "lucide-react";
 import { EchoPilotMark } from "./components/EchoPilotMark";
+import { DesktopWindowControls } from "./components/DesktopWindowControls";
 import { AiWorkspacePanel } from "./components/AiWorkspacePanel";
 import { LiveWorkspacePanel } from "./components/LiveWorkspacePanel";
 import { ModelsWorkspacePanel } from "./components/ModelsWorkspacePanel";
@@ -15,7 +16,7 @@ import { useUiPreferences } from "./hooks/useUiPreferences";
 import { useModelsWorkspace } from "./hooks/useModelsWorkspace";
 import type { TabKey } from "./types";
 
-const APP_VERSION = "0.7.0";
+const APP_VERSION = "0.9.0";
 
 const APP_TABS: Array<{ key: TabKey; label: string; icon: typeof Mic }> = [
   { key: "live", label: "Live", icon: Mic },
@@ -97,6 +98,7 @@ export function App() {
             <p className="hero-subtitle">Live computer-audio transcription & AI analysis</p>
           </div>
         </div>
+        <DesktopWindowControls />
         <SessionControls
           sessionState={live.sessionState}
           clearTranscriptOnStart={runtimeSettings.settings.clear_transcript_on_start}

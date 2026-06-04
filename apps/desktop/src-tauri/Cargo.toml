@@ -1,12 +1,13 @@
 [package]
 name = "realtime_system_transcriber_desktop"
-version = "0.7.0"
+version = "0.9.0"
 edition = "2021"
 
 [dependencies]
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+windows = { version = "0.61.3", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

@@ -8,6 +8,10 @@ use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 use tauri::{LogicalSize, Manager, Size};
+#[cfg(windows)]
+use windows::Win32::UI::WindowsAndMessaging::{
+    SetWindowDisplayAffinity, WDA_EXCLUDEFROMCAPTURE, WINDOW_DISPLAY_AFFINITY,
+};
 
 struct BackendState {
     child: Mutex<Option<Child>>,
@@ -19,8 +23,35 @@ struct BackendState {
 fn toggle_always_on_top(window: tauri::Window) -> Result<bool, String> {
     let current = window.is_always_on_top().map_err(|e| e.to_string())?;
     let next = !current;
-    window.set_always_on_top(next).map_err(|e| e.to_string())?;
-    Ok(next)
+    set_always_on_top(window, next)
+}
+
+#[tauri::command]
+fn set_always_on_top(window: tauri::Window, enabled: bool) -> Result<bool, String> {
+    window.set_always_on_top(enabled).map_err(|e| e.to_string())?;
+    Ok(enabled)
+}
+
+#[cfg(windows)]
+fn apply_capture_exclusion(window: &tauri::Window, enabled: bool) -> Result<(), String> {
+    let hwnd = window.hwnd().map_err(|e| e.to_string())?;
+    let affinity = if enabled {
+        WDA_EXCLUDEFROMCAPTURE
+    } else {
+        WINDOW_DISPLAY_AFFINITY(0)
+    };
+    unsafe { SetWindowDisplayAffinity(hwnd, affinity) }.map_err(|e| e.to_string())
+}
+
+#[cfg(not(windows))]
+fn apply_capture_exclusion(_: &tauri::Window, _: bool) -> Result<(), String> {
+    Err("Screen capture exclusion is only supported on Windows".to_string())
+}
+
+#[tauri::command]
+fn set_capture_exclusion(window: tauri::Window, enabled: bool) -> Result<bool, String> {
+    apply_capture_exclusion(&window, enabled)?;
+    Ok(enabled)
 }
 
 #[tauri::command]
@@ -118,6 +149,8 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             toggle_always_on_top,
+            set_always_on_top,
+            set_capture_exclusion,
             toggle_pip_mode,
             backend_health
         ])
