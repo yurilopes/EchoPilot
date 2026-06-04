@@ -71,6 +71,7 @@ class RuntimeController:
         self.runtime_settings = runtime_settings
         self.capture.block_seconds = runtime_settings.chunk_seconds
         self.capture.block_size = int(self.capture.sample_rate * runtime_settings.chunk_seconds)
+        self.asr.language = runtime_settings.language
 
         if not self.state.running:
             return
@@ -177,13 +178,18 @@ class RuntimeController:
             self.state.analysis_in_progress = True
             await self.broadcast({"type": "status", "data": self.status_payload()})
             transcript_signature = _transcript_signature(transcript)
-            result = await self.llm.analyze(
+            await self.broadcast({"type": "analysis_start", "timestamp": _utc_iso()})
+            result_chunks: list[str] = []
+            async for chunk in self.llm.analyze_stream(
                 base_url=self.runtime_settings.base_url,
                 model=self.runtime_settings.llm_model,
                 api_key=api_key,
-                prompt=self.runtime_settings.prompt,
+                prompt=_analysis_prompt(self.runtime_settings.prompt, self.runtime_settings.analysis_language),
                 transcript=transcript,
-            )
+            ):
+                result_chunks.append(chunk)
+                await self.broadcast({"type": "analysis_delta", "text": chunk, "timestamp": _utc_iso()})
+            result = "".join(result_chunks)
             self.state.llm_connection_status = "ok"
             self.state.last_analysis = result
             self._last_analyzed_transcript = transcript
@@ -240,3 +246,22 @@ def _utc_iso() -> str:
 
 def _transcript_signature(text: str) -> str:
     return hashlib.sha1(text.encode("utf-8")).hexdigest() if text else ""
+
+
+def _analysis_prompt(prompt: str, analysis_language: str) -> str:
+    language_name = _analysis_language_name(analysis_language)
+    return f"{prompt.strip()}\n\nRespond in {language_name}."
+
+
+def _analysis_language_name(language: str) -> str:
+    return {
+        "en": "English",
+        "pt": "Portuguese",
+        "es": "Spanish",
+        "fr": "French",
+        "de": "German",
+        "it": "Italian",
+        "ja": "Japanese",
+        "ko": "Korean",
+        "zh": "Chinese",
+    }.get(language, "English")

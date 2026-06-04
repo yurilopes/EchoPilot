@@ -1,5 +1,5 @@
 {
-  "language": "en",
+  "language": "auto",
   "asr_engine": "whisper",
   "model_id": "base",
   "ai_enabled": true,
@@ -9,6 +9,7 @@
   "clear_transcript_on_start": false,
   "base_url": "https://api.deepseek.com",
   "llm_model": "deepseek-v4-flash",
-  "prompt": "Summarize key points and action items from this transcript."
+  "prompt": "Summarize key points and action items from this transcript.",
+  "analysis_language": "en"
 }
 

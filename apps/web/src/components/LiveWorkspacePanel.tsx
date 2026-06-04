@@ -22,6 +22,8 @@ type Props = {
   analysisBusy: boolean;
   autoAnalysisEnabled: boolean;
   autoAnalysisLoaded: boolean;
+  autoAnalysisSaving: boolean;
+  autoAnalysisError: string;
   onToggleAutoAnalysis: (checked: boolean) => Promise<void>;
   onAnalyzeNow: () => void;
   onOpenAiTab: () => void;
@@ -46,6 +48,8 @@ export function LiveWorkspacePanel({
   analysisBusy,
   autoAnalysisEnabled,
   autoAnalysisLoaded,
+  autoAnalysisSaving,
+  autoAnalysisError,
   onToggleAutoAnalysis,
   onAnalyzeNow,
   onOpenAiTab,
@@ -76,6 +80,8 @@ export function LiveWorkspacePanel({
         analysisBusy={analysisBusy}
         autoAnalysisEnabled={autoAnalysisEnabled}
         autoAnalysisLoaded={autoAnalysisLoaded}
+        autoAnalysisSaving={autoAnalysisSaving}
+        autoAnalysisError={autoAnalysisError}
         onToggleAutoAnalysis={onToggleAutoAnalysis}
         onAnalyzeNow={onAnalyzeNow}
         onOpenAiTab={onOpenAiTab}

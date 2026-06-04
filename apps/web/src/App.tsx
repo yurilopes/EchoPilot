@@ -59,7 +59,7 @@ export function App() {
 
   const models = useModelsWorkspace({
     settings: runtimeSettings.settings,
-    setSettings: runtimeSettings.setSettings,
+    updateSettings: runtimeSettings.updateSettings,
     setActiveTab: setTab,
     preferences: {
       modelFilter,
@@ -78,9 +78,7 @@ export function App() {
 
   const ai = useAiWorkspace({
     settings: runtimeSettings.settings,
-    setSettings: runtimeSettings.setSettings,
-    saveRuntimeSettings: runtimeSettings.saveRuntimeSettings,
-    saveRuntimeSettingsPatch: runtimeSettings.saveRuntimeSettingsPatch,
+    updateSettings: runtimeSettings.updateSettings,
     status: live.status,
     transcript: live.transcript,
     setAnalysis: live.setAnalysis,
@@ -102,7 +100,11 @@ export function App() {
         <SessionControls
           sessionState={live.sessionState}
           clearTranscriptOnStart={runtimeSettings.settings.clear_transcript_on_start}
-          onToggleClearTranscriptOnStart={(checked) => runtimeSettings.setSettings((prev) => ({ ...prev, clear_transcript_on_start: checked }))}
+          onToggleClearTranscriptOnStart={(checked) => {
+            void live.safe(async () => {
+              await runtimeSettings.updateSettings({ clear_transcript_on_start: checked }, { persistNow: true });
+            });
+          }}
           stopCheckboxGapPx={0}
           onStart={() => live.safe(live.onStart)}
           onStop={() => live.safe(live.onStop)}
@@ -155,6 +157,8 @@ export function App() {
               analysisBusy={ai.analysisBusy}
               autoAnalysisEnabled={runtimeSettings.settingsLoaded ? runtimeSettings.settings.auto_analysis_enabled : false}
               autoAnalysisLoaded={runtimeSettings.settingsLoaded}
+              autoAnalysisSaving={ai.autoAnalysisSaving}
+              autoAnalysisError={ai.autoAnalysisError}
               onToggleAutoAnalysis={(checked) => live.safe(async () => ai.onToggleAutoAnalysis(checked))}
               onAnalyzeNow={() => void live.safe(ai.onAnalyzeNow)}
               onOpenAiTab={ai.onOpenAiTab}
@@ -198,8 +202,16 @@ export function App() {
             <SettingsWorkspacePanel
               settings={runtimeSettings.settings}
               status={live.status}
-              onLanguageChange={(value) => runtimeSettings.setSettings({ ...runtimeSettings.settings, language: value })}
-              onChunkSecondsChange={(value) => runtimeSettings.setSettings({ ...runtimeSettings.settings, chunk_seconds: value })}
+              onLanguageChange={(value) => {
+                void live.safe(async () => {
+                  await runtimeSettings.updateSettings({ language: value });
+                });
+              }}
+              onChunkSecondsChange={(value) => {
+                void live.safe(async () => {
+                  await runtimeSettings.updateSettings({ chunk_seconds: value });
+                });
+              }}
               onSaveRuntimeSettings={() => void live.safe(async () => { await runtimeSettings.saveRuntimeSettings(); await models.refreshCatalog(); })}
             />
           ) : null}

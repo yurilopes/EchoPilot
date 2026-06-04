@@ -21,22 +21,9 @@
     <script type="module" src="./src/main.ts"></script>
     <script>
       const webUi = document.getElementById("web-ui");
-      let runtimeSettingsSnapshot = null;
-      window.addEventListener("message", (event) => {
-        if (event.origin !== "http://127.0.0.1:5173") return;
-        if (event.data?.type === "echopilot-runtime-settings-snapshot") {
-          runtimeSettingsSnapshot = event.data.snapshot;
-        }
-      });
       window.__echopilotFlushRuntimeSettings = () => {
         webUi.contentWindow?.postMessage({ type: "echopilot-flush-runtime-settings" }, "http://127.0.0.1:5173");
       };
-      Object.defineProperty(window, "__echopilotRuntimeSettingsSnapshot", {
-        configurable: true,
-        get() {
-          return runtimeSettingsSnapshot;
-        },
-      });
     </script>
   </body>
 </html>

@@ -1,4 +1,3 @@
-import { invoke } from "@tauri-apps/api/core";
 import type { RuntimeSettings } from "./types";
 import type { UiPreferences } from "./types";
 
@@ -39,7 +38,7 @@ export async function apiPost<T>(path: string, body?: unknown): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export async function apiPutSettings(settings: RuntimeSettingsPatch): Promise<void> {
+export async function apiPutSettings(settings: RuntimeSettingsPatch): Promise<RuntimeSettings> {
   let response: Response;
   try {
     response = await fetch(`${API}/settings`, {
@@ -52,6 +51,9 @@ export async function apiPutSettings(settings: RuntimeSettingsPatch): Promise<vo
     throw normalizeFetchError(error);
   }
   if (!response.ok) throw new Error(await response.text());
+  const payload = await response.json() as { settings?: RuntimeSettings };
+  if (!payload.settings) throw new Error("Settings response did not include confirmed settings.");
+  return payload.settings;
 }
 
 export async function apiPostSettings(settings: RuntimeSettingsPatch): Promise<void> {
@@ -67,14 +69,6 @@ export async function apiPostSettings(settings: RuntimeSettingsPatch): Promise<v
     throw normalizeFetchError(error);
   }
   if (!response.ok) throw new Error(await response.text());
-}
-
-export async function cacheRuntimeSettingsSnapshot(settings: RuntimeSettings): Promise<void> {
-  try {
-    await invoke("cache_runtime_settings_snapshot", { snapshot: JSON.stringify(settings) });
-  } catch {
-    // Non-desktop contexts can ignore this backup path.
-  }
 }
 
 export async function apiGetUiPreferences(): Promise<UiPreferences> {

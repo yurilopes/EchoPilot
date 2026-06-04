@@ -184,6 +184,12 @@ export function useLiveWorkspace({ setActiveTab, transcriptDebug }: UseLiveWorks
           setTranscript((prev) => normalizeTranscriptChunk(`${prev}${prev ? " " : ""}${normalized}`));
           if (followStateRef.current === "paused") setUnreadChunks((v) => v + 1);
         }
+        if (msg.type === "analysis_start") {
+          setAnalysis("");
+        }
+        if (msg.type === "analysis_delta") {
+          setAnalysis((prev) => `${prev}${String(msg.text ?? "")}`);
+        }
         if (msg.type === "analysis") {
           setAnalysis(msg.text);
         }

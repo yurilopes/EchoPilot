@@ -1,4 +1,6 @@
 import type { RuntimeSettings, RuntimeStatus } from "../types";
+import type { LanguageOption } from "../languageOptions";
+import { transcriptionLanguageOptions } from "../languageOptions";
 
 type Props = {
   settings: RuntimeSettings;
@@ -15,6 +17,7 @@ export function SettingsWorkspacePanel({
   onChunkSecondsChange,
   onSaveRuntimeSettings,
 }: Props) {
+  const languageOptions: LanguageOption[] = transcriptionLanguageOptions(settings);
   return (
     <section className="panel tab-panel settings-tab-panel">
       <div className="panel-head">
@@ -29,13 +32,11 @@ export function SettingsWorkspacePanel({
           </div>
           <div className="form-grid">
             <label>
-              Language
+              Transcription Language
               <select value={settings.language} onChange={(e) => onLanguageChange(e.target.value)}>
-                <option value="en">English</option>
-                <option value="pt">Portuguese</option>
-                <option value="es">Spanish</option>
-                <option value="fr">French</option>
-                <option value="de">German</option>
+                {languageOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
               </select>
             </label>
             <label>

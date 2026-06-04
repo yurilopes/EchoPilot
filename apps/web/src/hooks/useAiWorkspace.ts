@@ -9,9 +9,7 @@ type AnalysisStateKind = "unavailable" | "ready" | "waiting" | "up-to-date" | "i
 
 type UseAiWorkspaceArgs = {
   settings: RuntimeSettings;
-  setSettings: Dispatch<SetStateAction<RuntimeSettings>>;
-  saveRuntimeSettings: (value?: RuntimeSettings) => Promise<void>;
-  saveRuntimeSettingsPatch: (patch: RuntimeSettingsPatch) => Promise<void>;
+  updateSettings: (patch: RuntimeSettingsPatch, options?: { persistNow?: boolean }) => Promise<RuntimeSettings>;
   status: RuntimeStatus | null;
   transcript: string;
   setAnalysis: Dispatch<SetStateAction<string>>;
@@ -42,6 +40,8 @@ export type AiWorkspace = {
   saveApiKey: () => Promise<void>;
   onAnalyzeNow: () => Promise<void>;
   onToggleAutoAnalysis: (checked: boolean) => Promise<void>;
+  autoAnalysisSaving: boolean;
+  autoAnalysisError: string;
   onOpenAiTab: () => void;
   aiEnabled: boolean;
   setAiEnabled: (checked: boolean) => void;
@@ -49,6 +49,8 @@ export type AiWorkspace = {
   setBaseUrl: (value: string) => void;
   llmModel: string;
   setLlmModel: (value: string) => void;
+  analysisLanguage: string;
+  setAnalysisLanguage: (value: string) => void;
   analysisIntervalSeconds: number;
   setAnalysisIntervalSeconds: (value: number) => void;
   prompt: string;
@@ -67,9 +69,7 @@ function deriveAnalysisState(aiReadinessState: ReturnType<typeof deriveAiReadine
 
 export function useAiWorkspace({
   settings,
-  setSettings,
-  saveRuntimeSettings,
-  saveRuntimeSettingsPatch,
+  updateSettings,
   status,
   transcript,
   setAnalysis,
@@ -80,6 +80,8 @@ export function useAiWorkspace({
   const [apiKeyEdited, setApiKeyEdited] = useState(false);
   const [aiKeyConfigured, setAiKeyConfigured] = useState(false);
   const [manualAnalysisInFlight, setManualAnalysisInFlight] = useState(false);
+  const [autoAnalysisSaving, setAutoAnalysisSaving] = useState(false);
+  const [autoAnalysisError, setAutoAnalysisError] = useState("");
 
   const aiReadiness = useMemo(() => deriveAiReadiness(settings, status, aiKeyConfigured), [settings, status, aiKeyConfigured]);
   const aiModelLabel = useMemo(() => (settings.llm_model.toLowerCase().includes("pro") ? "Pro" : "Flash"), [settings.llm_model]);
@@ -139,28 +141,40 @@ export function useAiWorkspace({
   };
 
   const onToggleAutoAnalysis = async (checked: boolean) => {
-    setSettings((prev) => ({ ...prev, auto_analysis_enabled: checked }));
-    await saveRuntimeSettingsPatch({ auto_analysis_enabled: checked });
+    setAutoAnalysisSaving(true);
+    setAutoAnalysisError("");
+    try {
+      await updateSettings({ auto_analysis_enabled: checked }, { persistNow: true });
+    } catch (error) {
+      setAutoAnalysisError("Save failed");
+      throw error;
+    } finally {
+      setAutoAnalysisSaving(false);
+    }
   };
 
   const setAiEnabled = (checked: boolean) => {
-    setSettings((prev) => ({ ...prev, ai_enabled: checked }));
+    void updateSettings({ ai_enabled: checked });
   };
 
   const setBaseUrl = (value: string) => {
-    setSettings((prev) => ({ ...prev, base_url: value }));
+    void updateSettings({ base_url: value });
   };
 
   const setLlmModel = (value: string) => {
-    setSettings((prev) => ({ ...prev, llm_model: value }));
+    void updateSettings({ llm_model: value });
+  };
+
+  const setAnalysisLanguage = (value: string) => {
+    void updateSettings({ analysis_language: value });
   };
 
   const setAnalysisIntervalSeconds = (value: number) => {
-    setSettings((prev) => ({ ...prev, analysis_interval_seconds: value }));
+    void updateSettings({ analysis_interval_seconds: value });
   };
 
   const setPrompt = (value: string) => {
-    setSettings((prev) => ({ ...prev, prompt: value }));
+    void updateSettings({ prompt: value });
   };
 
   const onOpenAiTab = () => setActiveTab("ai");
@@ -193,6 +207,8 @@ export function useAiWorkspace({
     saveApiKey,
     onAnalyzeNow,
     onToggleAutoAnalysis,
+    autoAnalysisSaving,
+    autoAnalysisError,
     onOpenAiTab,
     aiEnabled: settings.ai_enabled,
     setAiEnabled,
@@ -200,6 +216,8 @@ export function useAiWorkspace({
     setBaseUrl,
     llmModel: settings.llm_model,
     setLlmModel,
+    analysisLanguage: settings.analysis_language,
+    setAnalysisLanguage,
     analysisIntervalSeconds: settings.analysis_interval_seconds,
     setAnalysisIntervalSeconds,
     prompt: settings.prompt,

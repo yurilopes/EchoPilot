@@ -1,5 +1,6 @@
 import { AiReadinessCard } from "./AiReadinessCard";
 import type { AiWorkspace } from "../hooks/useAiWorkspace";
+import { ANALYSIS_LANGUAGE_OPTIONS } from "../languageOptions";
 
 type Props = {
   ai: AiWorkspace;
@@ -30,6 +31,14 @@ export function AiWorkspacePanel({ ai, onSaveApiKey }: Props) {
           <select value={ai.llmModel} onChange={(e) => ai.setLlmModel(e.target.value)}>
             <option value="deepseek-v4-flash">DeepSeek V4 Flash</option>
             <option value="deepseek-v4-pro">DeepSeek V4 Pro</option>
+          </select>
+        </label>
+        <label>
+          Response Language
+          <select value={ai.analysisLanguage} onChange={(e) => ai.setAnalysisLanguage(e.target.value)}>
+            {ANALYSIS_LANGUAGE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
           </select>
         </label>
         <label>

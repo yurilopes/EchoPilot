@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 
 function Stop-PortProcess {
   param([int]$Port)
-  $listeners = Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue
+  $listeners = Get-NetTCPConnection -LocalPort $Port -ErrorAction SilentlyContinue | Where-Object { $_.State -eq "Listen" -and $_.OwningProcess -gt 0 }
   if ($listeners) {
     $processIds = $listeners | Select-Object -ExpandProperty OwningProcess -Unique
     foreach ($processId in $processIds) {
@@ -39,12 +39,13 @@ if (-not $ready) {
 }
 
 Write-Host "[run] Starting web UI"
-$web = Start-Process powershell -ArgumentList '-NoProfile','-Command','cd apps/web; npm run dev -- --host 127.0.0.1 --port 5173' -WorkingDirectory $PSScriptRoot\.. -PassThru
+$web = Start-Process powershell -ArgumentList '-NoProfile','-Command','cd apps/web; npm.cmd run dev -- --host 127.0.0.1 --port 5173' -WorkingDirectory $PSScriptRoot\.. -PassThru
 
 Write-Host "[run] Starting desktop app"
-$desktop = Start-Process powershell -ArgumentList '-NoProfile','-Command','cd apps/desktop; npm run dev' -WorkingDirectory $PSScriptRoot\.. -PassThru
+$desktop = Start-Process powershell -ArgumentList '-NoProfile','-Command','cd apps/desktop; npm.cmd run dev' -WorkingDirectory $PSScriptRoot\.. -PassThru
 
 Write-Host "[run] Core PID: $($core.Id) | Web PID: $($web.Id) | Desktop PID: $($desktop.Id)"
+Write-Host "[run] Use scripts\stop-local.bat to stop all EchoPilot processes."
 Write-Host "[run] Press Ctrl+C in this terminal to stop this script."
 
 try {

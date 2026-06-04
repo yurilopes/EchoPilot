@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Dispatch, SetStateAction } from "react";
-import { apiGet, apiPostSettings, apiPutSettings, cacheRuntimeSettingsSnapshot } from "../api";
+import { apiGet, apiPostSettings, apiPutSettings } from "../api";
 import type { RuntimeSettingsPatch } from "../api";
 import type { RuntimeSettings } from "../types";
+import { normalizeAnalysisLanguage, normalizeTranscriptionLanguage } from "../languageOptions";
 
 export const DEFAULT_RUNTIME_SETTINGS: RuntimeSettings = {
-  language: "en",
+  language: "auto",
   asr_engine: "whisper",
   model_id: "base",
   ai_enabled: true,
@@ -16,6 +16,7 @@ export const DEFAULT_RUNTIME_SETTINGS: RuntimeSettings = {
   base_url: "https://api.deepseek.com",
   llm_model: "deepseek-v4-flash",
   prompt: "Summarize key points and action items from this transcript.",
+  analysis_language: "en",
 };
 
 export const SUPPORTED_LLM_MODEL_OPTIONS = [
@@ -27,108 +28,131 @@ type UseRuntimeSettingsArgs = {
   onCoreUnavailable?: () => void;
 };
 
+type UpdateSettingsOptions = {
+  persistNow?: boolean;
+};
+
 type RuntimeSettingsWorkspace = {
   settings: RuntimeSettings;
   settingsLoaded: boolean;
-  setSettings: Dispatch<SetStateAction<RuntimeSettings>>;
+  updateSettings: (patch: RuntimeSettingsPatch, options?: UpdateSettingsOptions) => Promise<RuntimeSettings>;
   saveRuntimeSettings: (value?: RuntimeSettings) => Promise<void>;
-  saveRuntimeSettingsPatch: (patch: RuntimeSettingsPatch) => Promise<void>;
   flushRuntimeSettings: (value?: RuntimeSettings) => void;
 };
 
 function normalizeRuntimeSettings(value: RuntimeSettings): RuntimeSettings {
   const normalizedBase = { ...DEFAULT_RUNTIME_SETTINGS, ...value };
   const llmModelSupported = SUPPORTED_LLM_MODEL_OPTIONS.some((option) => option.value === normalizedBase.llm_model);
-  return llmModelSupported
+  const withSupportedModel = llmModelSupported
     ? normalizedBase
     : { ...normalizedBase, llm_model: DEFAULT_RUNTIME_SETTINGS.llm_model };
+  return {
+    ...withSupportedModel,
+    language: normalizeTranscriptionLanguage(withSupportedModel),
+    analysis_language: normalizeAnalysisLanguage(withSupportedModel.analysis_language),
+  };
+}
+
+function settingsEqual(a: RuntimeSettings, b: RuntimeSettings): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
 }
 
 export function useRuntimeSettings({ onCoreUnavailable }: UseRuntimeSettingsArgs = {}): RuntimeSettingsWorkspace {
   const [settingsState, setSettingsState] = useState<RuntimeSettings>(DEFAULT_RUNTIME_SETTINGS);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
-  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const persistRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const persistSettingsRef = useRef<(value: RuntimeSettings) => Promise<void>>(async () => undefined);
-  const settingsRef = useRef(settingsState);
-  settingsRef.current = settingsState;
+  const settingsRef = useRef<RuntimeSettings>(DEFAULT_RUNTIME_SETTINGS);
+  const settingsLoadedRef = useRef(false);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const cacheSettingsSnapshot = useCallback((settings: RuntimeSettings) => {
-    if (typeof window !== "undefined") {
-      const snapshot = JSON.stringify(settings);
-      (window as Window & { __echopilotRuntimeSettingsSnapshot?: string }).__echopilotRuntimeSettingsSnapshot = snapshot;
-      window.parent?.postMessage({ type: "echopilot-runtime-settings-snapshot", snapshot }, "*");
-      try {
-        window.localStorage.removeItem("echopilot.runtimeSettings");
-      } catch {
-        // The backend remains the source of truth when local storage is unavailable.
-      }
+  const markCoreUnavailable = useCallback((error: unknown) => {
+    if (String(error).toLowerCase().includes("core api is temporarily unavailable")) {
+      onCoreUnavailable?.();
+      return true;
     }
-    void cacheRuntimeSettingsSnapshot(settings);
+    return false;
+  }, [onCoreUnavailable]);
+
+  const persistFullSettings = useCallback(async (settings: RuntimeSettings): Promise<RuntimeSettings> => {
+    const normalized = normalizeRuntimeSettings(settings);
+    settingsRef.current = normalized;
+    setSettingsState(normalized);
+    const confirmed = normalizeRuntimeSettings(await apiPutSettings(normalized));
+    settingsRef.current = confirmed;
+    setSettingsState(confirmed);
+    return confirmed;
   }, []);
 
-  const schedulePersistRetry = useCallback(() => {
-    if (persistRetryTimerRef.current) clearTimeout(persistRetryTimerRef.current);
-    persistRetryTimerRef.current = setTimeout(() => {
-      persistRetryTimerRef.current = null;
-      void persistSettingsRef.current(settingsRef.current);
-    }, 1000);
-  }, []);
-
-  const setSettings = useCallback<Dispatch<SetStateAction<RuntimeSettings>>>((value) => {
-    const next = typeof value === "function" ? (value as (prevState: RuntimeSettings) => RuntimeSettings)(settingsRef.current) : value;
-    settingsRef.current = next;
-    cacheSettingsSnapshot(next);
-    setSettingsState(next);
-  }, [cacheSettingsSnapshot]);
-
-  const persistSettings = useCallback(async (value: RuntimeSettings): Promise<void> => {
-    const normalized = normalizeRuntimeSettings(value);
-    try {
-      await apiPutSettings(normalized);
-      if (persistRetryTimerRef.current) {
-        clearTimeout(persistRetryTimerRef.current);
-        persistRetryTimerRef.current = null;
-      }
-      if (normalized.llm_model !== value.llm_model) {
-        setSettings(normalized);
-      }
-    } catch (error) {
-      if (String(error).toLowerCase().includes("core api is temporarily unavailable")) {
-        onCoreUnavailable?.();
-        schedulePersistRetry();
-        return;
-      }
-      throw error;
-    }
-  }, [onCoreUnavailable, schedulePersistRetry, setSettings]);
-
-  useEffect(() => {
-    persistSettingsRef.current = persistSettings;
-  }, [persistSettings]);
+  const scheduleSave = useCallback((settings: RuntimeSettings) => {
+    if (!settingsLoadedRef.current) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      saveTimerRef.current = null;
+      void persistFullSettings(settings).catch((error) => {
+        if (!markCoreUnavailable(error)) {
+          console.warn("settings_autosave_failed", error);
+        }
+        if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = setTimeout(() => {
+          retryTimerRef.current = null;
+          scheduleSave(settingsRef.current);
+        }, 1000);
+      });
+    }, 350);
+  }, [markCoreUnavailable, persistFullSettings]);
 
   const saveRuntimeSettings = useCallback(async (value?: RuntimeSettings): Promise<void> => {
-    if (autosaveTimerRef.current) {
-      clearTimeout(autosaveTimerRef.current);
-      autosaveTimerRef.current = null;
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
     }
-    await persistSettings(value ?? settingsRef.current);
-  }, [persistSettings]);
+    try {
+      await persistFullSettings(value ?? settingsRef.current);
+    } catch (error) {
+      if (!markCoreUnavailable(error)) throw error;
+      scheduleSave(settingsRef.current);
+    }
+  }, [markCoreUnavailable, persistFullSettings, scheduleSave]);
 
-  const saveRuntimeSettingsPatch = useCallback(async (patch: RuntimeSettingsPatch): Promise<void> => {
-    if (autosaveTimerRef.current) {
-      clearTimeout(autosaveTimerRef.current);
-      autosaveTimerRef.current = null;
+  const updateSettings = useCallback(async (
+    patch: RuntimeSettingsPatch,
+    options: UpdateSettingsOptions = {},
+  ): Promise<RuntimeSettings> => {
+    const previous = settingsRef.current;
+    const next = normalizeRuntimeSettings({ ...settingsRef.current, ...patch });
+    settingsRef.current = next;
+    setSettingsState(next);
+
+    if (!settingsLoadedRef.current) {
+      return next;
     }
-    await apiPutSettings(patch);
-  }, []);
+
+    if (options.persistNow) {
+      try {
+        return await persistFullSettings(next);
+      } catch (error) {
+        settingsRef.current = previous;
+        setSettingsState(previous);
+        if (!markCoreUnavailable(error)) throw error;
+        scheduleSave(settingsRef.current);
+        return settingsRef.current;
+      }
+    }
+    scheduleSave(next);
+    return next;
+  }, [markCoreUnavailable, persistFullSettings, scheduleSave]);
 
   const flushRuntimeSettings = useCallback((value?: RuntimeSettings) => {
-    if (autosaveTimerRef.current) {
-      clearTimeout(autosaveTimerRef.current);
-      autosaveTimerRef.current = null;
+    if (!settingsLoadedRef.current) return;
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
     }
-    const snapshot = value ?? settingsRef.current;
+    const snapshot = normalizeRuntimeSettings(value ?? settingsRef.current);
+    settingsRef.current = snapshot;
+
+    // Keep the backend settings file as the only persistence target.
+    // Desktop-side cached snapshots can overwrite fresher UI state on close.
     if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
       try {
         const sent = navigator.sendBeacon(
@@ -142,19 +166,6 @@ export function useRuntimeSettings({ onCoreUnavailable }: UseRuntimeSettingsArgs
     }
     void apiPostSettings(snapshot).catch((error) => console.warn("settings_unload_flush_failed", error));
   }, []);
-
-  useEffect(() => {
-    if (settingsLoaded) {
-      if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
-      autosaveTimerRef.current = setTimeout(() => {
-        void persistSettings(settingsRef.current);
-      }, 350);
-    }
-    return () => {
-      if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
-      if (persistRetryTimerRef.current) clearTimeout(persistRetryTimerRef.current);
-    };
-  }, [settingsLoaded, settingsState, persistSettings]);
 
   useEffect(() => {
     const flushSettings = () => {
@@ -197,16 +208,17 @@ export function useRuntimeSettings({ onCoreUnavailable }: UseRuntimeSettingsArgs
         .then((loaded) => {
           if (cancelled) return;
           const normalized = normalizeRuntimeSettings(loaded);
-          setSettings(normalized);
+          settingsRef.current = normalized;
+          settingsLoadedRef.current = true;
+          setSettingsState(normalized);
           setSettingsLoaded(true);
-          if (JSON.stringify(normalized) !== JSON.stringify(loaded)) {
-            void apiPutSettings(normalized);
+          if (!settingsEqual(normalized, loaded)) {
+            scheduleSave(normalized);
           }
         })
         .catch((error) => {
           if (cancelled) return;
-          if (String(error).toLowerCase().includes("core api is temporarily unavailable")) {
-            onCoreUnavailable?.();
+          if (markCoreUnavailable(error)) {
             loadRetryTimer = setTimeout(loadSettings, 1000);
             return;
           }
@@ -218,19 +230,16 @@ export function useRuntimeSettings({ onCoreUnavailable }: UseRuntimeSettingsArgs
     return () => {
       cancelled = true;
       if (loadRetryTimer) clearTimeout(loadRetryTimer);
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
     };
-  }, [onCoreUnavailable, setSettings]);
-
-  useEffect(() => {
-    cacheSettingsSnapshot(settingsState);
-  }, [cacheSettingsSnapshot, settingsState]);
+  }, [markCoreUnavailable, scheduleSave]);
 
   return {
     settings: settingsState,
     settingsLoaded,
-    setSettings,
+    updateSettings,
     saveRuntimeSettings,
-    saveRuntimeSettingsPatch,
     flushRuntimeSettings,
   };
 }

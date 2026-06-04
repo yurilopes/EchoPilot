@@ -6,11 +6,12 @@ from time import perf_counter
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from realtime_system_transcriber.model_registry import AsrModelRegistry
 from realtime_system_transcriber.runtime import RuntimeController
 from realtime_system_transcriber.asr_engine import AsrEngine
+from realtime_system_transcriber.asr_languages import normalize_transcription_language, supported_transcription_languages
 from realtime_system_transcriber.secrets import SecretStore
 from realtime_system_transcriber.settings import AppSettings, RuntimeSettings, ensure_runtime_settings, save_runtime_settings
 from realtime_system_transcriber.ui_preferences import UiPreferences, ensure_ui_preferences, save_ui_preferences
@@ -23,27 +24,22 @@ if runtime_settings.asr_engine == "whisper" and "/" in runtime_settings.model_id
     model_lower = runtime_settings.model_id.lower()
     compatible = ("faster-whisper" in model_lower) or ("ctranslate2" in model_lower) or model_lower.startswith("systran/")
     if not compatible:
-        runtime_settings = RuntimeSettings(
-            language=runtime_settings.language,
-            asr_engine="whisper",
-            model_id="base",
-            ai_enabled=runtime_settings.ai_enabled,
-            auto_analysis_enabled=runtime_settings.auto_analysis_enabled,
-            chunk_seconds=runtime_settings.chunk_seconds,
-            analysis_interval_seconds=runtime_settings.analysis_interval_seconds,
-            clear_transcript_on_start=runtime_settings.clear_transcript_on_start,
-            base_url=runtime_settings.base_url,
-            llm_model=runtime_settings.llm_model,
-            prompt=runtime_settings.prompt,
-        )
+        runtime_settings = RuntimeSettings(**{**runtime_settings.model_dump(), "asr_engine": "whisper", "model_id": "base"})
         save_runtime_settings(app_settings.settings_path, runtime_settings)
+normalized_language = normalize_transcription_language(runtime_settings.asr_engine, runtime_settings.model_id, runtime_settings.language)
+if normalized_language != runtime_settings.language:
+    runtime_settings = RuntimeSettings(**{**runtime_settings.model_dump(), "language": normalized_language})
+    save_runtime_settings(app_settings.settings_path, runtime_settings)
 secret_store = SecretStore(app_settings.secret_service_name, app_settings.secret_username)
 runtime_controller = RuntimeController(runtime_settings, secret_store)
 model_registry = AsrModelRegistry(cache_dir=app_settings.settings_path.parent / "hf-cache")
 settings_update_lock = asyncio.Lock()
+SUPPORTED_ANALYSIS_LANGUAGES = {"en", "pt", "es", "fr", "de", "it", "ja", "ko", "zh"}
 
 
 class RuntimeSettingsUpdate(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     language: str | None = None
     asr_engine: str | None = None
     model_id: str | None = None
@@ -55,6 +51,7 @@ class RuntimeSettingsUpdate(BaseModel):
     base_url: str | None = None
     llm_model: str | None = None
     prompt: str | None = None
+    analysis_language: str | None = None
 
 
 class LlmCredentialsInput(BaseModel):
@@ -112,6 +109,8 @@ async def diagnostics() -> dict:
     return {
         "status": runtime_controller.status_payload(),
         "runtime_settings": runtime_controller.runtime_settings.model_dump(),
+        "settings_path": str(app_settings.settings_path),
+        "ui_preferences_path": str(app_settings.ui_preferences_path),
     }
 
 
@@ -129,6 +128,13 @@ async def _update_settings(payload: RuntimeSettingsUpdate) -> dict:
     async with settings_update_lock:
         settings_data = runtime_controller.runtime_settings.model_dump()
         settings_data.update(payload.model_dump(exclude_unset=True))
+        settings_data["language"] = normalize_transcription_language(
+            settings_data["asr_engine"],
+            settings_data["model_id"],
+            settings_data["language"],
+        )
+        if settings_data["analysis_language"] not in SUPPORTED_ANALYSIS_LANGUAGES:
+            settings_data["analysis_language"] = "en"
         new_settings = RuntimeSettings(**settings_data)
         save_runtime_settings(app_settings.settings_path, new_settings)
         await runtime_controller.apply_runtime_settings(new_settings)
@@ -186,6 +192,7 @@ async def asr_catalog() -> dict:
             row = {
                 **row,
                 "is_selected": is_selected,
+                "languages": supported_transcription_languages(engine, model_id),
                 "availability": availability,
                 "download_state": download_status,
                 "download_progress": (task["progress"] if task else None),
@@ -252,17 +259,12 @@ async def asr_apply_model(payload: ApplyModelInput) -> dict:
     running = runtime_controller.state.running
 
     new_settings = RuntimeSettings(
-        language=current.language,
-        asr_engine=payload.engine,
-        model_id=payload.model_id,
-        ai_enabled=current.ai_enabled,
-        auto_analysis_enabled=current.auto_analysis_enabled,
-        chunk_seconds=current.chunk_seconds,
-        analysis_interval_seconds=current.analysis_interval_seconds,
-        clear_transcript_on_start=current.clear_transcript_on_start,
-        base_url=current.base_url,
-        llm_model=current.llm_model,
-        prompt=current.prompt,
+        **{
+            **current.model_dump(),
+            "language": normalize_transcription_language(payload.engine, payload.model_id, current.language),
+            "asr_engine": payload.engine,
+            "model_id": payload.model_id,
+        },
     )
     runtime_controller.runtime_settings = new_settings
     save_runtime_settings(app_settings.settings_path, new_settings)
@@ -317,6 +319,17 @@ async def llm_credentials_status() -> dict:
     return {
         "configured": bool(api_key and api_key.strip()),
         "masked": secret_store.get_api_key_hint(),
+    }
+
+
+@app.get("/asr/languages")
+async def asr_languages() -> dict:
+    s = runtime_controller.runtime_settings
+    return {
+        "engine": s.asr_engine,
+        "model_id": s.model_id,
+        "selected": s.language,
+        "languages": supported_transcription_languages(s.asr_engine, s.model_id),
     }
 
 

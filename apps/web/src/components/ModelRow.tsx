@@ -14,6 +14,14 @@ type Props = {
   onRetry: (taskId: string) => void;
 };
 
+function languageSummary(model: AsrModelRow): string {
+  const languages = (model.languages ?? []).filter((language) => language.value !== "auto");
+  if (languages.length === 0) return "unknown";
+  if (languages.length === 1 && languages[0].value === "en") return "english only";
+  if (languages.length >= 5) return "multilingual";
+  return languages.map((language) => language.label.toLowerCase()).join(", ");
+}
+
 export function ModelRow({
   model,
   isSelected,
@@ -55,6 +63,7 @@ export function ModelRow({
           <span className="badge badge-soft">speed: {model.profile.speed}</span>
           <span className="badge badge-soft">quality: {model.profile.quality}</span>
           <span className="badge badge-soft">live: {model.profile.live_suitability}</span>
+          <span className="badge badge-soft">languages: {languageSummary(model)}</span>
         </div>
         <div className="muted model-reco">{model.profile.recommendation}</div>
       </div>
@@ -101,4 +110,3 @@ export function ModelRow({
     </div>
   );
 }
-

@@ -50,6 +50,7 @@ export type RuntimeSettings = {
   base_url: string;
   llm_model: string;
   prompt: string;
+  analysis_language: string;
 };
 
 export type DownloadProgress = {
@@ -106,6 +107,7 @@ export type AsrModelRow = {
     footprint: string;
     recommendation: string;
   };
+  languages?: Array<{ value: string; label: string }>;
 };
 
 export type CatalogResponse = {

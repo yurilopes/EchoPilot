@@ -5,10 +5,10 @@ import {
   apiCancelDownload,
   apiDownloadModel,
   apiGet,
-  apiPutSettings,
   apiRetryDownload,
   apiWarmupModel,
 } from "../api";
+import { normalizeTranscriptionLanguage } from "../languageOptions";
 import { filterAndSortModels } from "../modelCatalog";
 import type {
   AsrModelRow,
@@ -36,7 +36,7 @@ type ModelsPreferences = {
 
 type UseModelsWorkspaceArgs = {
   settings: RuntimeSettings;
-  setSettings: Dispatch<SetStateAction<RuntimeSettings>>;
+  updateSettings: (patch: Partial<RuntimeSettings>, options?: { persistNow?: boolean }) => Promise<RuntimeSettings>;
   setActiveTab: Dispatch<SetStateAction<TabKey>>;
   preferences: ModelsPreferences;
   onCatalogError?: (error: unknown) => void;
@@ -53,7 +53,7 @@ const createEmptyModelFilters = (): ModelFilterCriteria => ({
 
 export function useModelsWorkspace({
   settings,
-  setSettings,
+  updateSettings,
   setActiveTab,
   preferences,
   onCatalogError,
@@ -133,9 +133,9 @@ export function useModelsWorkspace({
           if (autoApplyAfterDownload && pendingApply) {
             const doneTask = state.tasks.find((t) => t.engine === pendingApply.engine && t.model_id === pendingApply.modelId && t.status === "done");
             if (doneTask) {
-              const nextSettings = { ...settingsRef.current, asr_engine: pendingApply.engine, model_id: pendingApply.modelId };
-              setSettings(nextSettings);
-              await apiPutSettings(nextSettings);
+              const baseSettings = { ...settingsRef.current, asr_engine: pendingApply.engine, model_id: pendingApply.modelId };
+              const nextSettings = { ...baseSettings, language: normalizeTranscriptionLanguage(baseSettings) };
+              await updateSettings(nextSettings, { persistNow: true });
               await apiApplyModel(pendingApply.engine, pendingApply.modelId, true);
               await refreshCatalog();
               setPendingApply(null);
@@ -149,7 +149,7 @@ export function useModelsWorkspace({
     }, 1000);
 
     return () => clearInterval(poll);
-  }, [autoApplyAfterDownload, pendingApply, refreshCatalog, setAutoApplyAfterDownload, setSettings]);
+  }, [autoApplyAfterDownload, pendingApply, refreshCatalog, setAutoApplyAfterDownload, updateSettings]);
 
   const activeEngineRows = useMemo(() => {
     if (!catalog) return [] as AsrModelRow[];
@@ -197,35 +197,37 @@ export function useModelsWorkspace({
   }, [setModelFilters]);
 
   const onEngineChange = useCallback(async (engine: "whisper" | "parakeet") => {
-    const nextSettings = { ...settingsRef.current, asr_engine: engine };
-    setSettings(nextSettings);
+    const baseSettings = { ...settingsRef.current, asr_engine: engine };
+    const nextSettings = { ...baseSettings, language: normalizeTranscriptionLanguage(baseSettings) };
     clearModelFilters();
-    await apiPutSettings(nextSettings);
+    await updateSettings(nextSettings, { persistNow: true });
     await refreshCatalog();
-  }, [clearModelFilters, refreshCatalog, setSettings]);
+  }, [clearModelFilters, refreshCatalog, updateSettings]);
 
   const onSelectModel = useCallback(async () => {
-    await apiPutSettings(settingsRef.current);
+    await updateSettings(settingsRef.current, { persistNow: true });
     await refreshCatalog();
-  }, [refreshCatalog]);
+  }, [refreshCatalog, updateSettings]);
 
   const onApplyToRuntime = useCallback(async () => {
     const current = settingsRef.current;
     await apiApplyModel(current.asr_engine, current.model_id, true);
     const persistedSettings = await apiGet<RuntimeSettings>("/settings");
-    setSettings(persistedSettings);
+    await updateSettings(persistedSettings, { persistNow: false });
     await refreshCatalog();
     setActiveTab("live");
-  }, [refreshCatalog, setActiveTab, setSettings]);
+  }, [refreshCatalog, setActiveTab, updateSettings]);
 
   const onUseModel = useCallback(async (modelId: string) => {
     const current = settingsRef.current;
+    const nextSettings = { ...current, model_id: modelId };
+    await updateSettings({ ...nextSettings, language: normalizeTranscriptionLanguage(nextSettings) }, { persistNow: true });
     await apiApplyModel(current.asr_engine, modelId, true);
     const persistedSettings = await apiGet<RuntimeSettings>("/settings");
-    setSettings(persistedSettings);
+    await updateSettings(persistedSettings, { persistNow: false });
     await refreshCatalog();
     setActiveTab("live");
-  }, [refreshCatalog, setActiveTab, setSettings]);
+  }, [refreshCatalog, setActiveTab, updateSettings]);
 
   const onDownload = useCallback(async (modelId: string) => {
     const current = settingsRef.current;

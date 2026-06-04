@@ -119,14 +119,14 @@ class AsrEngine:
         if self._model is None:
             return ""
         try:
-            segments, _ = self._model.transcribe(chunk.astype(np.float32), language=self.language, vad_filter=True)
+            segments, _ = self._model.transcribe(chunk.astype(np.float32), language=_whisper_language(self.language), vad_filter=True)
             return " ".join(segment.text.strip() for segment in segments if segment.text.strip())
         except Exception as exc:
             message = str(exc).lower()
             if self._device == "cuda" and ("cublas" in message or "cudnn" in message or "cuda" in message):
                 logger.warning("CUDA runtime failed during transcription, falling back to CPU", error=str(exc))
                 self._fallback_whisper_to_cpu(reason="cuda_runtime_library_missing")
-                segments, _ = self._model.transcribe(chunk.astype(np.float32), language=self.language, vad_filter=True)
+                segments, _ = self._model.transcribe(chunk.astype(np.float32), language=_whisper_language(self.language), vad_filter=True)
                 return " ".join(segment.text.strip() for segment in segments if segment.text.strip())
             raise
 
@@ -191,3 +191,7 @@ class AsrEngine:
             language=self.language,
             avg_chunk_latency_ms=round(avg, 2),
         )
+
+
+def _whisper_language(language: str) -> str | None:
+    return None if language == "auto" else language

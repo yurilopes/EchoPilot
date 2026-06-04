@@ -14,6 +14,8 @@ type Props = {
   analysisBusy: boolean;
   autoAnalysisEnabled: boolean;
   autoAnalysisLoaded: boolean;
+  autoAnalysisSaving: boolean;
+  autoAnalysisError: string;
   onToggleAutoAnalysis: (checked: boolean) => Promise<void>;
   onAnalyzeNow: () => void;
   onOpenAiTab: () => void;
@@ -32,6 +34,8 @@ export function AnalysisPane({
   analysisBusy,
   autoAnalysisEnabled,
   autoAnalysisLoaded,
+  autoAnalysisSaving,
+  autoAnalysisError,
   onToggleAutoAnalysis,
   onAnalyzeNow,
   onOpenAiTab,
@@ -62,11 +66,13 @@ export function AnalysisPane({
           <input
             type="checkbox"
             checked={autoAnalysisEnabled}
-            disabled={!autoAnalysisLoaded}
+            disabled={!autoAnalysisLoaded || autoAnalysisSaving}
             onChange={(e) => onToggleAutoAnalysis(e.target.checked)}
           />
           Automatic analysis
         </label>
+        {autoAnalysisSaving ? <span className="muted">Saving...</span> : null}
+        {autoAnalysisError ? <span className="badge analysis-state-badge analysis-state-unavailable">{autoAnalysisError}</span> : null}
         <span className={`badge analysis-state-badge analysis-state-${analysisStateKind}`}>
           {analysisStateLabel}
         </span>
