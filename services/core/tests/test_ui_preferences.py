@@ -15,6 +15,7 @@ def test_ui_preferences_defaults_are_created(tmp_path) -> None:
     assert prefs.sort_by == "live"
     assert prefs.sort_dir == "desc"
     assert prefs.auto_apply_after_download is False
+    assert prefs.live_panel_focus == "50/50"
     assert path.exists()
 
 
@@ -25,6 +26,7 @@ def test_ui_preferences_partial_file_round_trips_with_defaults(tmp_path) -> None
         """
         {
           "active_tab": "models",
+          "live_panel_focus": "20/80",
           "model_filters": {
             "live": ["excellent"]
           }
@@ -40,6 +42,7 @@ def test_ui_preferences_partial_file_round_trips_with_defaults(tmp_path) -> None
     assert prefs.sort_by == "live"
     assert prefs.model_filters.live == ["excellent"]
     assert prefs.model_filters.quality == []
+    assert prefs.live_panel_focus == "50/50"
 
 
 def test_ui_preferences_recovers_from_malformed_file(tmp_path) -> None:
@@ -69,6 +72,7 @@ def test_ui_preferences_round_trip(tmp_path) -> None:
             "installed": ["yes"],
         },
         auto_apply_after_download=True,
+        live_panel_focus="30/70",
     )
 
     save_ui_preferences(path, prefs)

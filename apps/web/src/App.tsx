@@ -14,7 +14,7 @@ import { useLiveWorkspace } from "./hooks/useLiveWorkspace";
 import { useRuntimeSettings } from "./hooks/useRuntimeSettings";
 import { useUiPreferences } from "./hooks/useUiPreferences";
 import { useModelsWorkspace } from "./hooks/useModelsWorkspace";
-import type { TabKey } from "./types";
+import type { LivePanelFocus, TabKey } from "./types";
 
 const APP_VERSION = "0.9.0";
 
@@ -24,6 +24,8 @@ const APP_TABS: Array<{ key: TabKey; label: string; icon: typeof Mic }> = [
   { key: "models", label: "Models", icon: Boxes },
   { key: "settings", label: "Settings", icon: Settings2 },
 ];
+
+const LIVE_PANEL_FOCUS_OPTIONS: LivePanelFocus[] = ["70/30", "50/50", "30/70"];
 
 export function App() {
   const transcriptDebug = (import.meta.env.VITE_ECHOPILOT_TRANSCRIPT_DEBUG ?? "").toString() === "1";
@@ -40,6 +42,8 @@ export function App() {
     setModelFilters,
     autoApplyAfterDownload,
     setAutoApplyAfterDownload,
+    livePanelFocus,
+    setLivePanelFocus,
   } = useUiPreferences();
   const live = useLiveWorkspace({
     setActiveTab: setTab,
@@ -128,6 +132,24 @@ export function App() {
             <span>{item.label}</span>
           </button>
         ))}
+        {tab === "live" ? (
+          <div className="tab-focus-control" aria-label="Live panel focus">
+            <span className="muted">Transcription / AI Analysis</span>
+            <div className="segmented-control" role="group" aria-label="Live panel size">
+              {LIVE_PANEL_FOCUS_OPTIONS.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  className={`segment ${livePanelFocus === option ? "active" : ""}`}
+                  aria-pressed={livePanelFocus === option}
+                  onClick={() => setLivePanelFocus(option)}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </nav>
 
       <div className="workspace-shell">
@@ -164,6 +186,7 @@ export function App() {
               onToggleAutoAnalysis={(checked) => live.safe(async () => ai.onToggleAutoAnalysis(checked))}
               onAnalyzeNow={() => void live.safe(ai.onAnalyzeNow)}
               onOpenAiTab={ai.onOpenAiTab}
+              livePanelFocus={livePanelFocus}
             />
           ) : null}
 

@@ -3,13 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from realtime_system_transcriber.settings import write_json_atomic
 
 TabKey = Literal["live", "ai", "models", "settings"]
 SortBy = Literal["name", "downloads", "speed", "quality", "live", "size", "installed"]
 SortDir = Literal["asc", "desc"]
+LivePanelFocus = Literal["70/30", "50/50", "30/70"]
 
 
 class ModelFilterPreferences(BaseModel):
@@ -28,6 +29,14 @@ class UiPreferences(BaseModel):
     sort_dir: SortDir = "desc"
     model_filters: ModelFilterPreferences = Field(default_factory=ModelFilterPreferences)
     auto_apply_after_download: bool = False
+    live_panel_focus: LivePanelFocus = "50/50"
+
+    @field_validator("live_panel_focus", mode="before")
+    @classmethod
+    def normalize_live_panel_focus(cls, value: object) -> str:
+        if value in {"70/30", "50/50", "30/70"}:
+            return str(value)
+        return "50/50"
 
 
 def ensure_ui_preferences(path: Path) -> UiPreferences:

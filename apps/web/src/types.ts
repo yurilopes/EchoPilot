@@ -4,6 +4,7 @@ export type AiReadinessState = "ready" | "missing_key" | "invalid_config" | "dis
 export type TranscriptFollowState = "following" | "paused";
 export type SortBy = "name" | "downloads" | "speed" | "quality" | "live" | "size" | "installed";
 export type SortDir = "asc" | "desc";
+export type LivePanelFocus = "70/30" | "50/50" | "30/70";
 export type ModelFilterCriteria = {
   live: string[];
   quality: string[];
@@ -19,6 +20,7 @@ export type UiPreferences = {
   sort_dir: SortDir;
   model_filters: ModelFilterCriteria;
   auto_apply_after_download: boolean;
+  live_panel_focus: LivePanelFocus;
 };
 
 export type RuntimeStatus = {
